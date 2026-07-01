@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"          # Trigger: git tag v1.0.0 && git push --tags
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    permissions:
+      contents: write  # nötig um ein GitHub-Release anlegen zu dürfen
+
+    env:
+      Solution_Name: PCBridge.sln
+      Project_Path:  PCBridge\PCBridge.csproj
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore $env:Solution_Name --runtime win-x64
+
+      - name: Publish (SingleFile, NoTrim)
+        run: >
+          dotnet publish $env:Project_Path
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:PublishTrimmed=false
+          -p:DebugType=none
+          -p:DebugSymbols=false
+          -p:Version=${{ github.ref_name }}
+          --output publish_output
+          --no-restore
+
+      - name: Create ZIP
+        run: Compress-Archive -Path publish_output\PCBridge.exe -DestinationPath PCBridge-${{ github.ref_name }}-win-x64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PCBridge ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}   # v1.0.0-beta → prerelease
+          generate_release_notes: true                         # Changelog aus Commit-Messages
+          files: PCBridge-${{ github.ref_name }}-win-x64.zip
