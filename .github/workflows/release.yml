@@ -37,7 +37,8 @@ jobs:
       - name: Restore
         run: dotnet restore $env:Solution_Name --runtime win-x64
 
-      - name: Publish (SingleFile, NoTrim)
+      # ── Self-contained Single-File (~70 MB, kein .NET nötig) ──────────────
+      - name: Publish self-contained
         run: >
           dotnet publish $env:Project_Path
           --configuration Release
@@ -50,12 +51,36 @@ jobs:
           -p:DebugType=none
           -p:DebugSymbols=false
           -p:Version=${{ steps.version.outputs.VERSION }}
-          --output publish_output
+          --output publish_sc
           --no-restore
 
-      - name: Create ZIP
-        run: Compress-Archive -Path publish_output\PCBridge.exe -DestinationPath PCBridge-${{ github.ref_name }}-win-x64.zip
+      - name: ZIP self-contained
+        run: >
+          Compress-Archive
+          -Path publish_sc\PCBridge.exe
+          -DestinationPath PCBridge-${{ github.ref_name }}-win-x64.zip
 
+      # ── Framework-dependent (~8 MB, benötigt .NET 8 Desktop Runtime) ──────
+      - name: Publish framework-dependent
+        run: >
+          dotnet publish $env:Project_Path
+          --configuration Release
+          --runtime win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -p:DebugType=none
+          -p:DebugSymbols=false
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          --output publish_fx
+          --no-restore
+
+      - name: ZIP framework-dependent
+        run: >
+          Compress-Archive
+          -Path publish_fx\PCBridge.exe
+          -DestinationPath PCBridge-${{ github.ref_name }}-win-x64-net.zip
+
+      # ── GitHub Release mit beiden ZIPs ────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -63,4 +88,15 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
-          files: PCBridge-${{ github.ref_name }}-win-x64.zip
+          body: |
+            ## Downloads
+
+            | Datei | Größe | Voraussetzung |
+            |---|---|---|
+            | `PCBridge-${{ github.ref_name }}-win-x64.zip` | ~70 MB | keine – .NET Runtime eingebettet |
+            | `PCBridge-${{ github.ref_name }}-win-x64-net.zip` | ~8 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) erforderlich |
+
+            > Für Temperaturen und Watt-Werte wird zusätzlich der [PawnIO-Treiber](https://pawnio.eu/) benötigt.
+          files: |
+            PCBridge-${{ github.ref_name }}-win-x64.zip
+            PCBridge-${{ github.ref_name }}-win-x64-net.zip
