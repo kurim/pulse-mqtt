@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      Solution_Name: PCBridge.sln
+      Project_Path:  PCBridge\PCBridge.csproj
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore $env:Solution_Name --runtime win-x64
+
+      - name: Build
+        run: dotnet build $env:Solution_Name --configuration Release --no-restore
+
+      - name: Publish (SingleFile, NoTrim)
+        run: >
+          dotnet publish $env:Project_Path
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:PublishTrimmed=false
+          -p:DebugType=none
+          -p:DebugSymbols=false
+          --output publish_output
+          --no-restore
+
+      - name: Create ZIP
+        run: Compress-Archive -Path publish_output\PCBridge.exe -DestinationPath PCBridge.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCBridge-win-x64
+          path: PCBridge.zip
+          retention-days: 30
