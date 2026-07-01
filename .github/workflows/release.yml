@@ -3,14 +3,14 @@ name: Release
 on:
   push:
     tags:
-      - "v*"          # Trigger: git tag v1.0.0 && git push --tags
+      - "v*"
 
 jobs:
   release:
     runs-on: windows-latest
 
     permissions:
-      contents: write  # nötig um ein GitHub-Release anlegen zu dürfen
+      contents: write
 
     env:
       Solution_Name: PCBridge.sln
@@ -27,6 +27,13 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # v0.1.0-beta → 0.1.0-beta  (.NET akzeptiert kein führendes "v")
+      - name: Extract version
+        id: version
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          echo "VERSION=$v" >> $env:GITHUB_OUTPUT
+
       - name: Restore
         run: dotnet restore $env:Solution_Name --runtime win-x64
 
@@ -42,7 +49,7 @@ jobs:
           -p:PublishTrimmed=false
           -p:DebugType=none
           -p:DebugSymbols=false
-          -p:Version=${{ github.ref_name }}
+          -p:Version=${{ steps.version.outputs.VERSION }}
           --output publish_output
           --no-restore
 
@@ -54,6 +61,6 @@ jobs:
         with:
           name: PCBridge ${{ github.ref_name }}
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}   # v1.0.0-beta → prerelease
-          generate_release_notes: true                         # Changelog aus Commit-Messages
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
           files: PCBridge-${{ github.ref_name }}-win-x64.zip
