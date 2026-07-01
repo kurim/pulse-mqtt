@@ -1,120 +1,120 @@
 # PCBridge
 
-**PCBridge** ist eine schlanke Windows-Tray-App, die PC-Hardwaredaten (CPU/GPU-Last, Temperaturen, Leistungsaufnahme) per MQTT publiziert. Sie richtet sich primär an kleine Displays wie das **CYD (Cheap Yellow Display / ESP32-2432S028)**, funktioniert aber mit jedem MQTT-fähigen Client.
+**PCBridge** is a lightweight Windows tray application that publishes PC hardware data (CPU/GPU load, temperatures, power consumption) via MQTT. It is primarily aimed at small displays like the **CYD (Cheap Yellow Display / ESP32-2432S028)** but works with any MQTT-capable client.
 
-![Tray-Menü](.github/tray_menu.png)
+> 🇩🇪 [Deutsche Version](README.de.md)
 
 ---
 
 ## Features
 
-- **Eingebetteter MQTT-Broker** – kein separater Mosquitto-Server nötig; das CYD-Board (oder jeder andere Client) verbindet sich direkt mit PCBridge
-- **Flexible Sensor-Auswahl** – alle von LibreHardwareMonitor erkannten Sensoren werden aufgelistet; du wählst selbst welche publiziert werden und unter welchem MQTT-Schlüssel
-- **Konfigurierbare MQTT-Schlüssel** – Standardwerte sind kompatibel mit der CYD-Firmware (`cpu_load`, `cpu_temp`, `cpu_power`, `gpu_load`, `gpu_temp`, `gpu_power`)
-- **Tray-Icon** – läuft unsichtbar im Hintergrund, Live-Werte im Tooltip
-- **Keine Adminrechte zum Starten** – optionaler „Als Administrator neu starten"-Eintrag im Menü für volle Sensorzugriff (Temperaturen/Watt erfordern PawnIO-Treiberzugriff)
-- **Autostart** – wahlweise per Registry (normale Rechte) oder Task Scheduler (Admin-Modus, kein UAC-Prompt)
-- **PawnIO-Assistent** – erkennt ob der Treiber installiert ist und bietet Download+Installation an
-- **Single-File-EXE** – optional als portable Einzeldatei publizierbar (kein .NET-Setup nötig)
+- **Embedded MQTT broker** – no separate Mosquitto server required; the CYD board (or any other client) connects directly to PCBridge
+- **Flexible sensor selection** – all sensors detected by LibreHardwareMonitor are listed; you choose which ones to publish and under which MQTT key
+- **Configurable MQTT keys** – defaults are compatible with the CYD firmware (`cpu_load`, `cpu_temp`, `cpu_power`, `gpu_load`, `gpu_temp`, `gpu_power`)
+- **Tray icon** – runs silently in the background, live values shown in the tooltip
+- **No admin rights required to start** – optional "Restart as Administrator" entry in the menu for full sensor access (temperatures/watts require PawnIO driver access)
+- **Autostart** – via registry (standard user) or Task Scheduler (admin mode, no UAC prompt)
+- **PawnIO assistant** – detects whether the driver is installed and offers download + installation
+- **Single-file EXE** – optionally publishable as a portable single file (no .NET setup required)
 
 ---
 
-## Voraussetzungen
+## Requirements
 
-| Komponente | Version | Hinweis |
+| Component | Version | Notes |
 |---|---|---|
 | Windows | 10 / 11 (x64) | |
-| .NET 8 Desktop Runtime | 8.0 oder neuer | Nur bei Framework-abhängigem Build nötig |
-| PawnIO-Treiber | aktuell | Für Temperatur- und Leistungssensoren, einmalig als Admin installieren |
+| .NET 8 Desktop Runtime | 8.0 or later | Only required for framework-dependent build |
+| PawnIO driver | current | For temperature and power sensors, one-time admin install |
 
 ### PawnIO
 
-PCBridge nutzt [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), das intern den **PawnIO-Treiber** (Nachfolger von WinRing0) für den Low-Level-Hardwarezugriff verwendet.
+PCBridge uses [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), which internally relies on the **PawnIO driver** (successor to WinRing0) for low-level hardware access.
 
 - **Download:** https://pawnio.eu/
-- Die Installation erfordert einmalig Adminrechte (Kernel-Treiber)
-- PCBridge bietet die Installation beim ersten Start automatisch an
-- Ohne PawnIO sind nur CPU-Last-Werte verfügbar (keine Temperaturen, kein Watt)
-- Für volle Sensordaten: PCBridge über **Rechtsklick → Als Administrator neu starten** erhöht starten
+- Installation requires admin rights once (kernel driver)
+- PCBridge will automatically offer installation on first launch
+- Without PawnIO, only CPU load values are available (no temperatures, no watts)
+- For full sensor data: launch PCBridge elevated via **right-click → Restart as Administrator**
 
 ---
 
-## Installation & Start
+## Installation & Launch
 
-### Option A – Einfach starten (Framework-abhängig, ~8 MB)
+### Option A – Quick start (framework-dependent, ~8 MB)
 
-1. [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) installieren (einmalig)
-2. `PCBridge.exe` starten
-3. Beim ersten Start: Sensor-Auswahl bestätigen oder anpassen
+1. Install the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (one-time)
+2. Run `PCBridge.exe`
+3. On first launch: confirm or adjust the sensor selection
 
-### Option B – Portable Single-File-EXE (~70 MB, kein .NET nötig)
+### Option B – Portable single-file EXE (~70 MB, no .NET required)
 
 ```powershell
 .\publish.ps1 -Mode NoTrim
 ```
 
-Die EXE liegt anschließend unter `publish_notrim\PCBridge.exe` und läuft auf jedem Windows-x64-Rechner ohne zusätzliche Software.
+The EXE will be located at `publish_notrim\PCBridge.exe` and runs on any Windows x64 machine without additional software.
 
 ### Option C – Visual Studio Publish
 
-Rechtsklick auf Projekt → **Veröffentlichen** → Profil wählen:
+Right-click project → **Publish** → select profile:
 
-| Profil | Größe | Voraussetzung |
+| Profile | Size | Requirement |
 |---|---|---|
-| `SingleFile` | ~20 MB | keine (self-contained, getrimmt) |
-| `SingleFile_NoTrim` | ~70 MB | keine (self-contained, sicherer) |
-| `FrameworkDependent` | ~8 MB | .NET 8 Runtime installiert |
+| `SingleFile` | ~20 MB | none (self-contained, trimmed) |
+| `SingleFile_NoTrim` | ~70 MB | none (self-contained, safer) |
+| `FrameworkDependent` | ~8 MB | .NET 8 Runtime installed |
 
 ---
 
-## Verwendung
+## Usage
 
-### Erster Start
+### First Launch
 
-Beim allerersten Start:
-1. PCBridge entdeckt automatisch alle verfügbaren Sensoren
-2. Sinnvolle Standardwerte werden vorausgewählt (CYD-kompatible MQTT-Schlüssel)
-3. Der **Sensor-Picker** öffnet sich zur Bestätigung oder Anpassung
+On the very first start:
+1. PCBridge automatically discovers all available sensors
+2. Sensible defaults are pre-selected (CYD firmware-compatible MQTT keys)
+3. The **sensor picker** opens for confirmation or customization
 
-### Tray-Menü
+### Tray Menu
 
-| Eintrag | Funktion |
+| Entry | Function |
 |---|---|
-| **Einstellungen…** | Port, Topic, Update-Intervall, Autostart |
-| **Sensoren auswählen…** | Sensor-Picker öffnen (auch Doppelklick aufs Icon) |
-| 🔒 **Als Administrator neu starten** | Für volle Temperaturen/Watt-Werte (erscheint nur ohne Admin) |
-| ✔ **Läuft als Administrator** | Zeigt erhöhten Modus an (ausgegraut) |
-| ✔ **PawnIO installiert** | PawnIO erkannt (ausgegraut) |
-| **PawnIO installieren…** | Download + Installation des Treibers (erscheint nur wenn fehlt) |
-| **Beenden** | App beenden |
+| **Settings…** | Port, topic, update interval, autostart |
+| **Select sensors…** | Open sensor picker (also double-click the icon) |
+| 🔒 **Restart as Administrator** | For full temperature/watt values (only shown without admin) |
+| ✔ **Running as Administrator** | Indicates elevated mode (grayed out) |
+| ✔ **PawnIO installed** | PawnIO detected (grayed out) |
+| **Install PawnIO…** | Download + install the driver (only shown if missing) |
+| **Exit** | Quit the app |
 
-### Sensor-Picker
+### Sensor Picker
 
-Öffnet sich über **Rechtsklick → Sensoren auswählen…** oder **Doppelklick** aufs Tray-Icon.
+Opened via **right-click → Select sensors…** or **double-click** on the tray icon.
 
-- Alle erkannten Sensoren werden tabellarisch angezeigt (Hardware, Typ, Name, aktueller Wert)
-- **Häkchen** setzt den Sensor als aktiv
-- **MQTT-Schlüssel** (gelbe Spalte) ist frei editierbar – dieser Name erscheint im JSON-Payload
-- **Standardwerte** stellt die CYD-kompatible Vorauswahl wieder her
-- Live-Werte aktualisieren sich alle 2 Sekunden während der Dialog offen ist
+- All detected sensors are displayed in a table (hardware, type, name, current value)
+- **Checkbox** activates the sensor
+- **MQTT key** (yellow column) is freely editable – this name appears in the JSON payload
+- **Default values** restores the CYD-compatible pre-selection
+- Live values update every 2 seconds while the dialog is open
 
-### Einstellungen
+### Settings
 
-| Feld | Standard | Beschreibung |
+| Field | Default | Description |
 |---|---|---|
-| MQTT-Port | `1883` | Port des eingebetteten Brokers |
-| MQTT-Topic | `pcbridge/hwinfo` | Topic unter dem der Payload publiziert wird |
-| Update-Intervall | `2,0 s` | Wie oft neue Werte gesendet werden |
-| Mit Windows starten | aus | Autostart (Registry oder Task Scheduler) |
+| MQTT port | `1883` | Port of the embedded broker |
+| MQTT topic | `pcbridge/hwinfo` | Topic under which the payload is published |
+| Update interval | `2.0 s` | How often new values are sent |
+| Start with Windows | off | Autostart (registry or Task Scheduler) |
 
-Gespeichert unter `%AppData%\PCBridge\settings.json`.
+Saved to `%AppData%\PCBridge\settings.json`.
 
 ---
 
-## MQTT-Payload
+## MQTT Payload
 
-PCBridge publiziert ein JSON-Objekt mit den vom Benutzer konfigurierten Feldern.  
-Standardauswahl (CYD-Firmware-kompatibel):
+PCBridge publishes a JSON object with the user-configured fields.
+Default selection (CYD firmware-compatible):
 
 ```json
 {
@@ -127,72 +127,72 @@ Standardauswahl (CYD-Firmware-kompatibel):
 }
 ```
 
-Die Feldnamen entsprechen den MQTT-Schlüsseln, die du im Sensor-Picker vergibst. Eigene Schlüssel sind möglich, müssen dann aber auch in der Firmware/im Display-Client angepasst werden.
+The field names correspond to the MQTT keys you assign in the sensor picker. Custom keys are possible but must also be updated in the firmware/display client accordingly.
 
-### CYD-Board verbinden
+### Connecting the CYD Board
 
-Im CYD-Webinterface (Captive Portal oder `http://<CYD-IP>`):
+In the CYD web interface (captive portal or `http://<CYD-IP>`):
 
-| Feld | Wert |
+| Field | Value |
 |---|---|
-| `mqtt_host` | LAN-IP des PCs auf dem PCBridge läuft |
-| `mqtt_port` | `1883` (oder wie konfiguriert) |
-| `mqtt_topic` | `pcbridge/hwinfo` (oder wie konfiguriert) |
+| `mqtt_host` | LAN IP of the PC running PCBridge |
+| `mqtt_port` | `1883` (or as configured) |
+| `mqtt_topic` | `pcbridge/hwinfo` (or as configured) |
 
 ---
 
 ## Autostart
 
-| Modus | Methode | UAC beim Start |
+| Mode | Method | UAC on start |
 |---|---|---|
-| Normaler Benutzer | `HKCU\...\Run` Registry-Eintrag | keiner |
-| Administrator | Windows Task Scheduler (`/rl highest`) | keiner |
+| Standard user | `HKCU\...\Run` registry entry | none |
+| Administrator | Windows Task Scheduler (`/rl highest`) | none |
 
-Wenn PCBridge als Admin läuft und „Mit Windows starten" aktiviert ist, wird ein Task-Scheduler-Task angelegt, der beim Login ohne UAC-Prompt erhöht startet.
+When PCBridge is running as admin and "Start with Windows" is enabled, a Task Scheduler task is created that launches elevated at login without a UAC prompt.
 
 ---
 
-## Aus dem Quellcode bauen
+## Building from Source
 
-**Voraussetzungen:**
+**Requirements:**
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Windows (WinForms-Ziel)
+- Windows (WinForms target)
 
 ```powershell
-git clone https://github.com/<dein-username>/PCBridge.git
+git clone https://github.com/<your-username>/PCBridge.git
 cd PCBridge
 dotnet restore
 dotnet run --project PCBridge
 ```
 
-**Single-File-EXE erstellen:**
+**Create single-file EXE:**
 
 ```powershell
 cd PCBridge
-.\publish.ps1                    # NoTrim ~70 MB (empfohlen)
-.\publish.ps1 -Mode Fx           # Framework-abhängig ~8 MB
+.\publish.ps1                    # NoTrim ~70 MB (recommended)
+.\publish.ps1 -Mode Fx           # Framework-dependent ~8 MB
 ```
 
 ---
 
-## Projektstruktur
+## Project Structure
 
 ```
 PCBridge.sln
 PCBridge/
-├── Program.cs                  # Einstiegspunkt, Single-Instance-Check
-├── TrayAppContext.cs           # Tray-Icon, Menü, Poll-Timer, Orchestrierung
-├── AppSettings.cs              # Einstellungen (JSON unter %AppData%)
-├── SensorEntry.cs              # Gespeicherte Sensor-Konfiguration
-├── AvailableSensor.cs          # Zur Laufzeit entdeckter LHM-Sensor
-├── HardwareMonitorService.cs   # LibreHardwareMonitor-Wrapper, Sensor-Discovery
-├── MqttBrokerService.cs        # Eingebetteter MQTTnet-Broker
-├── PawnIoHelper.cs             # PawnIO-Erkennung und Installation
-├── SensorPickerForm.cs         # Sensor-Auswahl-Dialog
-├── SettingsForm.cs             # Einstellungen-Dialog
-├── app.ico                     # App-Icon (eingebettet als Resource)
-├── app.manifest                # asInvoker, kein automatisches UAC
-├── publish.ps1                 # Single-File-Publish-Skript
+├── Program.cs                  # Entry point, single-instance check
+├── TrayAppContext.cs           # Tray icon, menu, poll timer, orchestration
+├── AppSettings.cs              # Settings (JSON under %AppData%)
+├── SensorEntry.cs              # Saved sensor configuration
+├── AvailableSensor.cs          # Runtime-discovered LHM sensor
+├── HardwareMonitorService.cs   # LibreHardwareMonitor wrapper, sensor discovery
+├── MqttBrokerService.cs        # Embedded MQTTnet broker
+├── PawnIoHelper.cs             # PawnIO detection and installation
+├── SensorPickerForm.cs         # Sensor selection dialog
+├── SettingsForm.cs             # Settings dialog
+├── app.ico                     # App icon (embedded as resource)
+├── app.manifest                # asInvoker, no automatic UAC
+├── publish.ps1                 # Single-file publish script
 └── Properties/
     ├── launchSettings.json
     └── PublishProfiles/
@@ -203,13 +203,13 @@ PCBridge/
 
 ---
 
-## Lizenzen
+## Licenses
 
-PCBridge selbst ist unter der **MIT License** veröffentlicht.
+PCBridge itself is released under the **MIT License**.
 
-### Verwendete Bibliotheken
+### Third-party libraries
 
-| Bibliothek | Lizenz | Quelle |
+| Library | License | Source |
 |---|---|---|
 | [MQTTnet](https://github.com/dotnet/MQTTnet) | MIT | .NET Foundation |
 | [MQTTnet.Server](https://github.com/dotnet/MQTTnet) | MIT | .NET Foundation |
@@ -217,15 +217,15 @@ PCBridge selbst ist unter der **MIT License** veröffentlicht.
 | [System.ServiceProcess.ServiceController](https://github.com/dotnet/runtime) | MIT | .NET Foundation |
 | .NET 8 Runtime | MIT | Microsoft / .NET Foundation |
 
-**Hinweis zu MPL 2.0 (LibreHardwareMonitorLib):**  
-Die Mozilla Public License 2.0 ist eine schwache Copyleft-Lizenz. Sie gilt nur für Änderungen an den Dateien der Bibliothek selbst – nicht für den PCBridge-Code, der sie *verwendet*. PCBridge nimmt keine Änderungen an LibreHardwareMonitorLib vor.  
-Vollständiger Lizenztext: https://www.mozilla.org/en-US/MPL/2.0/
+**Note on MPL 2.0 (LibreHardwareMonitorLib):**
+The Mozilla Public License 2.0 is a weak copyleft license. It applies only to modifications made to the library's own files — not to code that merely *uses* it. PCBridge does not modify LibreHardwareMonitorLib.
+Full license text: https://www.mozilla.org/en-US/MPL/2.0/
 
 ---
 
-## Bekannte Einschränkungen
+## Known Limitations
 
-- **Temperaturen/Watt nur als Admin** – PawnIO erlaubt standardmäßig nur Administratoren den Treiberzugriff. Lösung: Rechtsklick → *Als Administrator neu starten*.
-- **Sensor-Namen sind Heuristiken** – je nach CPU/GPU-Hersteller können LHM-Sensornamen abweichen. Der Sensor-Picker zeigt alle verfügbaren Sensoren mit Echtwerten zur manuellen Auswahl.
-- **Mehrere GPUs** – bei Multi-GPU-Systemen werden alle GPUs im Sensor-Picker angezeigt; es können Sensoren von mehreren GPUs gleichzeitig aktiviert werden (MQTT-Schlüssel müssen dann unterschiedlich sein).
-- **Trimmed Publish** – WinForms unterstützt IL-Trimming nicht vollständig; der `SingleFile_NoTrim`-Build ist zuverlässiger.
+- **Temperatures/watts require admin** – PawnIO by default only allows administrators driver access. Fix: right-click → *Restart as Administrator*.
+- **Sensor names are heuristic** – depending on CPU/GPU manufacturer, LHM sensor names may vary. The sensor picker shows all available sensors with live values for manual selection.
+- **Multiple GPUs** – on multi-GPU systems, all GPUs are shown in the sensor picker; sensors from multiple GPUs can be enabled simultaneously (MQTT keys must be unique).
+- **Trimmed publish** – WinForms does not fully support IL trimming; the `SingleFile_NoTrim` build is more reliable.
