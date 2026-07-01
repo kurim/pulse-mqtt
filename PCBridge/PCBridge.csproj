@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PCBridge</AssemblyName>
+    <RootNamespace>PCBridge</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Platforms>x64</Platforms>
+    <Version>1.0.0</Version>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <!--
+    Trimming-Konfiguration (nur aktiv wenn PublishTrimmed=true).
+
+    Strategie: alle Assemblies die Reflection nutzen oder für die der Trimmer
+    keine vollständige Analyse liefert, werden als Root-Assemblies markiert
+    → sie bleiben vollständig erhalten. Getrimmt wird nur ungenutzte
+    .NET-Runtime-Code, das spart typisch 25-35 MB.
+  -->
+  <PropertyGroup Condition="'$(PublishTrimmed)' == 'true'">
+    <!--
+      Unterdrückt "Windows Forms wird nicht unterstützt"-Fehler.
+      WinForms ist unten als TrimmerRootAssembly vollständig geschützt,
+      sodass keine Laufzeitfehler durch fehlende Typen entstehen.
+    -->
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PublishTrimmed)' == 'true'">
+    <!-- WinForms: Trimmer-Analyse nicht unterstützt → komplett schützen -->
+    <TrimmerRootAssembly Include="System.Windows.Forms" />
+    <TrimmerRootAssembly Include="System.Drawing" />
+    <!-- Hardware-Monitoring und MQTT nutzen Reflection -->
+    <TrimmerRootAssembly Include="LibreHardwareMonitorLib" />
+    <TrimmerRootAssembly Include="MQTTnet" />
+    <TrimmerRootAssembly Include="MQTTnet.Server" />
+    <!-- Service-Controller für PawnIO-Erkennung -->
+    <TrimmerRootAssembly Include="System.ServiceProcess.ServiceController" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MQTTnet"        Version="5.*" />
+    <PackageReference Include="MQTTnet.Server" Version="5.*" />
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.*" />
+  </ItemGroup>
+
+  <Target Name="RemoveMonoPosixHelpers" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(Filename)').Contains('MonoPosixHelper'))" />
+    </ItemGroup>
+  </Target>
+
+</Project>

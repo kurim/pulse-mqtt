@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CydPcBridge": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    }
+  }
+}
