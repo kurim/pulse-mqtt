@@ -231,7 +231,7 @@ public sealed class SensorPickerForm : Form
             {
                 MessageBox.Show(
                     Localization.T("Sensors.MissingKey.Body",
-                        _sensors.FirstOrDefault(s => s.Identifier == id)?.SensorName),
+                        _sensors.FirstOrDefault(s => s.Identifier == id)?.SensorName ?? ""),
                     Localization.T("Sensors.MissingKey.Title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.None;
                 return;

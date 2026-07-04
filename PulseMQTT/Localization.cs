@@ -30,7 +30,7 @@ public static class Localization
         };
 
     /// <summary>Übersetzt den Schlüssel, optional mit string.Format-Argumenten.</summary>
-    public static string T(string key, params object[] args)
+    public static string T(string key, params object?[] args)
     {
         if (!Strings.TryGetValue(key, out var pair))
             return key;
