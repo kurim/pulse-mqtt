@@ -28,36 +28,13 @@ public sealed class TrayAppContext : ApplicationContext
     public TrayAppContext()
     {
         _settings = AppSettings.Load();
-
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Einstellungen...",        null, OnSettingsClicked);
-        menu.Items.Add("Sensoren auswählen...",   null, OnSensorsClicked);
-        menu.Items.Add(new ToolStripSeparator());
-
-        if (!IsAdmin)
-            menu.Items.Add("🔒 Als Administrator neu starten", null, OnRestartAsAdminClicked);
-        else
-        {
-            var adminItem = new ToolStripMenuItem("✔ Läuft als Administrator") { Enabled = false };
-            menu.Items.Add(adminItem);
-        }
-
-        if (PawnIoHelper.IsInstalled())
-        {
-            menu.Items.Add(new ToolStripMenuItem("✔ PawnIO installiert") { Enabled = false });
-        }
-        else
-        {
-            menu.Items.Add("PawnIO installieren...", null, OnInstallPawnIoClicked);
-        }
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Beenden", null, OnExitClicked);
+        Localization.LanguageCode = _settings.Language;
 
         _trayIcon = new NotifyIcon
         {
             Icon             = LoadAppIcon(),
-            Text             = "PulseMQTT – wird gestartet...",
-            ContextMenuStrip = menu,
+            Text             = Localization.T("Tray.Starting", "PulseMQTT"),
+            ContextMenuStrip = BuildContextMenu(),
             Visible          = true
         };
         _trayIcon.DoubleClick += OnSensorsClicked;
@@ -66,6 +43,35 @@ public sealed class TrayAppContext : ApplicationContext
         _pollTimer.Tick += async (_, _) => await PublishSnapshotAsync();
 
         _ = StartupAsync();
+    }
+
+    private ContextMenuStrip BuildContextMenu()
+    {
+        var menu = new ContextMenuStrip();
+        menu.Items.Add(Localization.T("Menu.Settings"),      null, OnSettingsClicked);
+        menu.Items.Add(Localization.T("Menu.SelectSensors"), null, OnSensorsClicked);
+        menu.Items.Add(new ToolStripSeparator());
+
+        if (!IsAdmin)
+            menu.Items.Add(Localization.T("Menu.RestartAsAdmin"), null, OnRestartAsAdminClicked);
+        else
+        {
+            var adminItem = new ToolStripMenuItem(Localization.T("Menu.RunningAsAdmin")) { Enabled = false };
+            menu.Items.Add(adminItem);
+        }
+
+        if (PawnIoHelper.IsInstalled())
+        {
+            menu.Items.Add(new ToolStripMenuItem(Localization.T("Menu.PawnIoInstalled")) { Enabled = false });
+        }
+        else
+        {
+            menu.Items.Add(Localization.T("Menu.InstallPawnIo"), null, OnInstallPawnIoClicked);
+        }
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(Localization.T("Menu.Exit"), null, OnExitClicked);
+
+        return menu;
     }
 
     private async Task StartupAsync()
@@ -111,19 +117,21 @@ public sealed class TrayAppContext : ApplicationContext
     private async Task ApplySettingsAsync(AppSettings settings)
     {
         _settings = settings;
+        Localization.LanguageCode = settings.Language;
+        _trayIcon.ContextMenuStrip = BuildContextMenu();
         _pollTimer.Stop();
         _pollTimer.Interval = Math.Max(250, (int)(settings.UpdateIntervalSeconds * 1000));
 
         try
         {
             await _broker.StartAsync(settings.MqttPort, settings.MqttUsername, settings.MqttPassword);
-            _trayIcon.Text = Truncate($"PulseMQTT – Port {settings.MqttPort} | {settings.MqttTopic}");
+            _trayIcon.Text = Truncate(Localization.T("Tray.PortTopic", "PulseMQTT", settings.MqttPort, settings.MqttTopic));
         }
         catch (Exception ex)
         {
-            _trayIcon.Text = Truncate($"PulseMQTT – MQTT-Fehler: {ex.Message}");
+            _trayIcon.Text = Truncate(Localization.T("Tray.MqttError", "PulseMQTT", ex.Message));
             _trayIcon.ShowBalloonTip(5000, "PulseMQTT",
-                $"MQTT-Broker konnte nicht auf Port {settings.MqttPort} gestartet werden:\n{ex.Message}",
+                Localization.T("Balloon.MqttStartFailed.Body", settings.MqttPort, ex.Message),
                 ToolTipIcon.Error);
         }
 
@@ -148,9 +156,9 @@ public sealed class TrayAppContext : ApplicationContext
                 if (!hasData && !IsAdmin && PawnIoHelper.IsInstalled())
                 {
                     _accessWarningShown = true;
-                    _trayIcon.ShowBalloonTip(10_000, "PulseMQTT – Eingeschränkter Zugriff",
-                        "Sensor-Werte nicht verfügbar (PawnIO erlaubt Zugriff nur für Admins).\n" +
-                        "Rechtsklick → Als Administrator neu starten.",
+                    _trayIcon.ShowBalloonTip(10_000,
+                        Localization.T("Balloon.RestrictedAccess.Title"),
+                        Localization.T("Balloon.RestrictedAccess.Body"),
                         ToolTipIcon.Warning);
                 }
             }
@@ -169,13 +177,12 @@ public sealed class TrayAppContext : ApplicationContext
                 .Take(4)
                 .Select(kv => $"{kv.Key}: {kv.Value}"));
 
-            _trayIcon.Text = Truncate(
-                $"PulseMQTT{(IsAdmin ? " 🔒" : "")} – {_broker.ConnectedClients} Client(s) – Port {_settings.MqttPort}\n" +
-                preview);
+            _trayIcon.Text = Truncate(Localization.T("Tray.Status",
+                "PulseMQTT", IsAdmin ? " 🔒" : "", _broker.ConnectedClients, _settings.MqttPort, preview));
         }
         catch (Exception ex)
         {
-            _trayIcon.Text = Truncate($"PulseMQTT – Fehler: {ex.Message}");
+            _trayIcon.Text = Truncate(Localization.T("Tray.Error", "PulseMQTT", ex.Message));
         }
         finally
         {
@@ -211,9 +218,8 @@ public sealed class TrayAppContext : ApplicationContext
     private void OnRestartAsAdminClicked(object? sender, EventArgs e)
     {
         var r = MessageBox.Show(
-            "PulseMQTT wird als Administrator neu gestartet.\n" +
-            "Windows fragt einmalig nach dem Admin-Passwort (UAC).",
-            "Als Administrator neu starten",
+            Localization.T("Dialog.RestartAdmin.Body"),
+            Localization.T("Dialog.RestartAdmin.Title"),
             MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
 
         if (r != DialogResult.OK) return;
@@ -229,8 +235,8 @@ public sealed class TrayAppContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Neustart fehlgeschlagen:\n{ex.Message}",
-                "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(Localization.T("Dialog.RestartFailed.Body", ex.Message),
+                Localization.T("Dialog.Error.Title"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -238,7 +244,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         if (PawnIoHelper.IsInstalled())
         {
-            MessageBox.Show("PawnIO ist bereits installiert.", "PulseMQTT",
+            MessageBox.Show(Localization.T("Dialog.PawnIoAlready.Body"), "PulseMQTT",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }

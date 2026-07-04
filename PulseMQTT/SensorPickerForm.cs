@@ -38,7 +38,7 @@ public sealed class SensorPickerForm : Form
         _existingEntries = existingEntries;
         _getLiveValues  = getLiveValues;
 
-        Text            = "PulseMQTT – Sensoren konfigurieren";
+        Text            = Localization.T("Sensors.Title");
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimumSize     = new Size(750, 450);
         Size            = new Size(860, 560);
@@ -60,9 +60,7 @@ public sealed class SensorPickerForm : Form
         // ── Hinweistext ─────────────────────────────────────────────────────
         var hint = new Label
         {
-            Text      = "Wähle die Sensoren, die per MQTT publiziert werden. " +
-                        "Die MQTT-Schlüssel müssen mit der Firmware-Konfiguration übereinstimmen.\n" +
-                        "⚑ Vorausgewählte Standardwerte sind mit der CYD-Firmware kompatibel.",
+            Text      = Localization.T("Sensors.Hint"),
             AutoSize  = false,
             Dock      = DockStyle.Fill,
             Height    = 36,
@@ -97,11 +95,11 @@ public sealed class SensorPickerForm : Form
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
             Resizable   = DataGridViewTriState.False
         });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Hardware", HeaderText = "Hardware",       FillWeight = 20, ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Type",     HeaderText = "Typ",            FillWeight = 14, ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Sensor",   HeaderText = "Sensor",         FillWeight = 24, ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "MqttKey",  HeaderText = "MQTT-Schlüssel", FillWeight = 20 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Value",    HeaderText = "Aktuell",        FillWeight = 12, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Hardware", HeaderText = Localization.T("Sensors.Col.Hardware"), FillWeight = 20, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Type",     HeaderText = Localization.T("Sensors.Col.Type"),     FillWeight = 14, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Sensor",   HeaderText = Localization.T("Sensors.Col.Sensor"),   FillWeight = 24, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "MqttKey",  HeaderText = Localization.T("Sensors.Col.MqttKey"),  FillWeight = 20 });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Value",    HeaderText = Localization.T("Sensors.Col.Value"),    FillWeight = 12, ReadOnly = true });
 
         _grid.Columns[ColMqttKey].DefaultCellStyle.BackColor = Color.FromArgb(255, 255, 230);
 
@@ -117,9 +115,9 @@ public sealed class SensorPickerForm : Form
             AutoSize      = true
         };
 
-        var btnOk = new Button { Text = "Speichern", Width = 100, DialogResult = DialogResult.OK };
-        var btnCancel = new Button { Text = "Abbrechen", Width = 100, DialogResult = DialogResult.Cancel };
-        var btnDefault = new Button { Text = "Standardwerte", Width = 120 };
+        var btnOk = new Button { Text = Localization.T("Button.Save"), Width = 100, DialogResult = DialogResult.OK };
+        var btnCancel = new Button { Text = Localization.T("Button.Cancel"), Width = 100, DialogResult = DialogResult.Cancel };
+        var btnDefault = new Button { Text = Localization.T("Button.Defaults"), Width = 120 };
 
         btnDefault.Click += (_, _) => ResetToDefaults();
         btnOk.Click      += (_, _) => CollectResult();
@@ -232,9 +230,9 @@ public sealed class SensorPickerForm : Form
             if (enabled && string.IsNullOrEmpty(mqttKey))
             {
                 MessageBox.Show(
-                    $"Sensor \"{_sensors.FirstOrDefault(s => s.Identifier == id)?.SensorName}\" " +
-                    "ist aktiviert, hat aber keinen MQTT-Schlüssel.\nBitte einen Schlüssel eingeben oder den Sensor deaktivieren.",
-                    "Fehlender MQTT-Schlüssel", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    Localization.T("Sensors.MissingKey.Body",
+                        _sensors.FirstOrDefault(s => s.Identifier == id)?.SensorName),
+                    Localization.T("Sensors.MissingKey.Title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.None;
                 return;
             }
@@ -258,9 +256,8 @@ public sealed class SensorPickerForm : Form
         if (dupes.Count > 0)
         {
             MessageBox.Show(
-                $"Folgende MQTT-Schlüssel sind mehrfach vergeben: {string.Join(", ", dupes)}\n" +
-                "Bitte jeden Schlüssel nur einmal verwenden.",
-                "Doppelte Schlüssel", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Localization.T("Sensors.DupeKeys.Body", string.Join(", ", dupes)),
+                Localization.T("Sensors.DupeKeys.Title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             DialogResult = DialogResult.None;
         }
     }

@@ -10,7 +10,7 @@
 
 - **Embedded MQTT broker** – no separate Mosquitto server required; the CYD board (or any other client) connects directly to PulseMQTT
 - **Flexible sensor selection** – all sensors detected by LibreHardwareMonitor are listed; you choose which ones to publish and under which MQTT key
-- **Configurable MQTT keys** – defaults are compatible with the CYD firmware (`cpu_load`, `cpu_temp`, `cpu_power`, `gpu_load`, `gpu_temp`, `gpu_power`)
+- **Configurable MQTT keys** – defaults are compatible with the Pulse ESP32 firmware (`cpu_load`, `cpu_temp`, `cpu_power`, `gpu_load`, `gpu_temp`, `gpu_power`)
 - **Tray icon** – runs silently in the background, live values shown in the tooltip
 - **No admin rights required to start** – optional "Restart as Administrator" entry in the menu for full sensor access (temperatures/watts require PawnIO driver access)
 - **Autostart** – via registry (standard user) or Task Scheduler (admin mode, no UAC prompt)
@@ -73,7 +73,7 @@ Right-click project → **Publish** → select profile:
 
 On the very first start:
 1. PulseMQTT automatically discovers all available sensors
-2. Sensible defaults are pre-selected (CYD firmware-compatible MQTT keys)
+2. Sensible defaults are pre-selected (Pulse ESP32 firmware-compatible MQTT keys)
 3. The **sensor picker** opens for confirmation or customization
 
 ### Tray Menu
@@ -95,7 +95,7 @@ Opened via **right-click → Select sensors…** or **double-click** on the tray
 - All detected sensors are displayed in a table (hardware, type, name, current value)
 - **Checkbox** activates the sensor
 - **MQTT key** (yellow column) is freely editable – this name appears in the JSON payload
-- **Default values** restores the CYD-compatible pre-selection
+- **Default values** restores the pre-selection compatible with the Pulse ESP32 firmware
 - Live values update every 2 seconds while the dialog is open
 
 ### Settings
@@ -108,6 +108,7 @@ Opened via **right-click → Select sensors…** or **double-click** on the tray
 | MQTT password | empty | Optional – used together with the username |
 | Update interval | `2.0 s` | How often new values are sent |
 | Start with Windows | off | Autostart (registry or Task Scheduler) |
+| Language | Automatic | Automatic (follows Windows), German, or English |
 
 If username and password are left empty, the broker accepts anonymous connections (default). Set both to require clients to authenticate before they can connect.
 
@@ -118,7 +119,7 @@ Saved to `%AppData%\PulseMQTT\settings.json`.
 ## MQTT Payload
 
 PulseMQTT publishes a JSON object with the user-configured fields.
-Default selection (CYD firmware-compatible):
+Default selection (Pulse ESP32 firmware-compatible):
 
 ```json
 {
@@ -192,6 +193,7 @@ PulseMQTT/
 ├── HardwareMonitorService.cs   # LibreHardwareMonitor wrapper, sensor discovery
 ├── MqttBrokerService.cs        # Embedded MQTTnet broker
 ├── PawnIoHelper.cs             # PawnIO detection and installation
+├── Localization.cs             # German/English UI strings
 ├── SensorPickerForm.cs         # Sensor selection dialog
 ├── SettingsForm.cs             # Settings dialog
 ├── app.ico                     # App icon (embedded as resource)
