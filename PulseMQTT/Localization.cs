@@ -1,16 +1,23 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
+using System.Runtime.InteropServices;
 
 namespace PulseMQTT;
 
 /// <summary>
 /// Sehr einfache Übersetzungsschicht (Deutsch/Englisch). "auto" erkennt die
-/// Sprache anhand der Windows-UI-Kultur; ansonsten wird die im Dropdown
+/// Sprache anhand der Windows-UI-Sprache; ansonsten wird die im Dropdown
 /// gewählte Sprache erzwungen.
+///
+/// Die Erkennung nutzt bewusst GetUserDefaultUILanguage() statt
+/// CultureInfo.CurrentUICulture: Das Projekt läuft mit
+/// InvariantGlobalization=true (kleinere EXE), wodurch CultureInfo immer
+/// die Invariant Culture liefert und die OS-Sprache nicht mehr erkennbar wäre.
 /// </summary>
 public static class Localization
 {
+    private const int LangGerman = 0x07; // LANG_GERMAN (Win32-Primärsprach-ID)
+
     private static string _languageCode = "auto";
 
     /// <summary>"auto", "de" oder "en".</summary>
@@ -25,12 +32,27 @@ public static class Localization
         {
             "de" => true,
             "en" => false,
-            _ => CultureInfo.CurrentUICulture.TwoLetterISOLanguageName
-                .Equals("de", StringComparison.OrdinalIgnoreCase)
+            _ => IsOsUiGerman()
         };
 
+    private static bool IsOsUiGerman()
+    {
+        try
+        {
+            var primaryLanguage = GetUserDefaultUILanguage() & 0x3FF;
+            return primaryLanguage == LangGerman;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern ushort GetUserDefaultUILanguage();
+
     /// <summary>Übersetzt den Schlüssel, optional mit string.Format-Argumenten.</summary>
-    public static string T(string key, params object[] args)
+    public static string T(string key, params object?[] args)
     {
         if (!Strings.TryGetValue(key, out var pair))
             return key;
