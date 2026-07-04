@@ -10,6 +10,8 @@ public sealed class SettingsForm : Form
     private readonly TextBox       _topicInput;
     private readonly NumericUpDown _intervalInput;
     private readonly CheckBox      _autoStartInput;
+    private readonly TextBox       _usernameInput;
+    private readonly TextBox       _passwordInput;
 
     public AppSettings Result { get; private set; }
 
@@ -29,11 +31,11 @@ public sealed class SettingsForm : Form
         var layout = new TableLayoutPanel
         {
             Left = 12, Top = 12, Width = 356,
-            ColumnCount = 2, RowCount = 4, AutoSize = true
+            ColumnCount = 2, RowCount = 6, AutoSize = true
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 191));
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 6; i++)
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
 
         layout.Controls.Add(MkLabel("MQTT-Port:"), 0, 0);
@@ -45,17 +47,26 @@ public sealed class SettingsForm : Form
         _topicInput = new TextBox { Text = current.MqttTopic, Width = 185 };
         layout.Controls.Add(_topicInput, 1, 1);
 
-        layout.Controls.Add(MkLabel("Update-Intervall (Sek.):"), 0, 2);
+        layout.Controls.Add(MkLabel("MQTT-Benutzername:"), 0, 2);
+        _usernameInput = new TextBox { Text = current.MqttUsername, Width = 185 };
+        layout.Controls.Add(_usernameInput, 1, 2);
+
+        layout.Controls.Add(MkLabel("MQTT-Passwort:"), 0, 3);
+        _passwordInput = new TextBox
+            { Text = current.MqttPassword, Width = 185, UseSystemPasswordChar = true };
+        layout.Controls.Add(_passwordInput, 1, 3);
+
+        layout.Controls.Add(MkLabel("Update-Intervall (Sek.):"), 0, 4);
         _intervalInput = new NumericUpDown
         {
             Minimum = 0.5m, Maximum = 60m, DecimalPlaces = 1, Increment = 0.5m,
             Value = (decimal)current.UpdateIntervalSeconds, Width = 100
         };
-        layout.Controls.Add(_intervalInput, 1, 2);
+        layout.Controls.Add(_intervalInput, 1, 4);
 
-        layout.Controls.Add(MkLabel("Mit Windows starten:"), 0, 3);
+        layout.Controls.Add(MkLabel("Mit Windows starten:"), 0, 5);
         _autoStartInput = new CheckBox { Checked = current.StartWithWindows };
-        layout.Controls.Add(_autoStartInput, 1, 3);
+        layout.Controls.Add(_autoStartInput, 1, 5);
 
         Controls.Add(layout);
 
@@ -84,6 +95,8 @@ public sealed class SettingsForm : Form
             {
                 MqttPort              = (int)_portInput.Value,
                 MqttTopic             = string.IsNullOrWhiteSpace(_topicInput.Text) ? "pulsemqtt/hwinfo" : _topicInput.Text.Trim(),
+                MqttUsername          = _usernameInput.Text.Trim(),
+                MqttPassword          = _passwordInput.Text,
                 UpdateIntervalSeconds = (double)_intervalInput.Value,
                 StartWithWindows      = _autoStartInput.Checked,
                 EnabledSensors        = current.EnabledSensors  // Sensor-Wahl bleibt erhalten

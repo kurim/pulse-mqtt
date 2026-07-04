@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MQTTnet;
+using MQTTnet.Protocol;
 using MQTTnet.Server;
 
 namespace PulseMQTT;
@@ -20,7 +21,7 @@ public sealed class MqttBrokerService
     public int ConnectedClients => _connectedClients;
     public bool IsRunning => _server?.IsStarted ?? false;
 
-    public async Task StartAsync(int port)
+    public async Task StartAsync(int port, string? username = null, string? password = null)
     {
         await StopAsync();
 
@@ -42,6 +43,18 @@ public sealed class MqttBrokerService
             Interlocked.Decrement(ref _connectedClients);
             return Task.CompletedTask;
         };
+
+        if (!string.IsNullOrEmpty(username))
+        {
+            _server.ValidatingConnectionAsync += args =>
+            {
+                if (args.UserName != username || args.Password != password)
+                {
+                    args.ReasonCode = MqttConnectReasonCode.BadUserNameOrPassword;
+                }
+                return Task.CompletedTask;
+            };
+        }
 
         await _server.StartAsync();
     }

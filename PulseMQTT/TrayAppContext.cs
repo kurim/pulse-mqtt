@@ -116,7 +116,7 @@ public sealed class TrayAppContext : ApplicationContext
 
         try
         {
-            await _broker.StartAsync(settings.MqttPort);
+            await _broker.StartAsync(settings.MqttPort, settings.MqttUsername, settings.MqttPassword);
             _trayIcon.Text = Truncate($"PulseMQTT – Port {settings.MqttPort} | {settings.MqttTopic}");
         }
         catch (Exception ex)

@@ -13,6 +13,13 @@ public sealed class AppSettings
     public bool StartWithWindows { get; set; }
 
     /// <summary>
+    /// Optionale Zugangsdaten für den eingebetteten Broker. Leer = keine
+    /// Authentifizierung, jeder Client darf sich verbinden.
+    /// </summary>
+    public string MqttUsername { get; set; } = "";
+    public string MqttPassword { get; set; } = "";
+
+    /// <summary>
     /// Vom Benutzer ausgewählte Sensoren. Leer = noch nicht konfiguriert,
     /// beim nächsten Start werden Standardwerte vorausgewählt.
     /// </summary>
