@@ -20,6 +20,11 @@ public sealed class AppSettings
     public string MqttPassword { get; set; } = "";
 
     /// <summary>
+    /// Anzeigesprache: "auto" (Windows-Sprache), "de" oder "en".
+    /// </summary>
+    public string Language { get; set; } = "auto";
+
+    /// <summary>
     /// Vom Benutzer ausgewählte Sensoren. Leer = noch nicht konfiguriert,
     /// beim nächsten Start werden Standardwerte vorausgewählt.
     /// </summary>

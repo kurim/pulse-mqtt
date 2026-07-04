@@ -76,15 +76,8 @@ public static class PawnIoHelper
     {
         var result = MessageBox.Show(
             owner,
-            "Der PawnIO-Treiber ist nicht installiert.\n\n" +
-            "PawnIO stellt den Low-Level-Hardwarezugriff für LibreHardwareMonitor bereit " +
-            "(Nachfolger von WinRing0). Ohne ihn sind keine CPU-/GPU-Temperatur- und " +
-            "Leistungswerte verfügbar – nur Last-Prozentwerte.\n\n" +
-            "Soll PulseMQTT den PawnIO-Installer jetzt herunterladen und starten?\n" +
-            "Windows fragt anschließend nach Administrator-Rechten " +
-            "(der Installer benötigt sie für die Treiber-Installation).\n\n" +
-            "Alternativ: Manuell von https://pawnio.eu/ herunterladen.",
-            "PawnIO nicht gefunden – PulseMQTT",
+            Localization.T("PawnIo.NotFound.Body"),
+            Localization.T("PawnIo.NotFound.Title"),
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Information,
             MessageBoxDefaultButton.Button1);
@@ -109,7 +102,8 @@ public static class PawnIoHelper
 
         // Fortschritts-Ballon während des Downloads
         // (NotifyIcon ist zu diesem Zeitpunkt noch nicht übergeben, daher einfacher Dialog)
-        using var progress = new ProgressForm("PawnIO herunterladen…", "Lade Installer herunter...");
+        using var progress = new ProgressForm(
+            Localization.T("PawnIo.Downloading.Title"), Localization.T("PawnIo.Downloading.Body"));
         progress.Show(owner);
         Application.DoEvents();
 
@@ -131,9 +125,8 @@ public static class PawnIoHelper
             progress.Close();
             MessageBox.Show(
                 owner,
-                $"Download fehlgeschlagen:\n{ex.Message}\n\n" +
-                "Bitte den Installer manuell von https://pawnio.eu/ herunterladen.",
-                "Download-Fehler",
+                Localization.T("PawnIo.DownloadFailed.Body", ex.Message),
+                Localization.T("PawnIo.DownloadFailed.Title"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return false;
@@ -160,10 +153,8 @@ public static class PawnIoHelper
 
             MessageBox.Show(
                 owner,
-                "Der PawnIO-Installer wurde gestartet.\n\n" +
-                "Nach der Installation bitte PulseMQTT neu starten, " +
-                "damit der Treiber erkannt wird.",
-                "PawnIO wird installiert",
+                Localization.T("PawnIo.Installing.Body"),
+                Localization.T("PawnIo.Installing.Title"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
 
@@ -173,8 +164,8 @@ public static class PawnIoHelper
         {
             MessageBox.Show(
                 owner,
-                $"Installer konnte nicht gestartet werden:\n{ex.Message}",
-                "Fehler",
+                Localization.T("PawnIo.StartFailed.Body", ex.Message),
+                Localization.T("Dialog.Error.Title"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return false;

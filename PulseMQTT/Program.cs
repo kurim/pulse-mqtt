@@ -19,8 +19,9 @@ internal static class Program
 
         if (!isNew)
         {
+            Localization.LanguageCode = AppSettings.Load().Language;
             MessageBox.Show(
-                "PulseMQTT läuft bereits im Hintergrund.\nSchau im Systray nach dem Symbol.",
+                Localization.T("App.AlreadyRunning.Body"),
                 "PulseMQTT", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }

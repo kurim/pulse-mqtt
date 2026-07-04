@@ -110,7 +110,7 @@ public sealed class HardwareMonitorService : IDisposable
 
     /// <summary>
     /// Wählt aus einer Liste von entdeckten Sensoren sinnvolle Standardwerte
-    /// mit vorbelegten MQTT-Schlüsseln aus (kompatibel mit CYD-Firmware).
+    /// mit vorbelegten MQTT-Schlüsseln aus (kompatibel mit der Pulse ESP32-Firmware).
     /// </summary>
     public static List<SensorEntry> BuildDefaultSelection(List<AvailableSensor> sensors)
     {

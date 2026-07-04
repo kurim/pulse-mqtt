@@ -9,8 +9,8 @@ namespace PulseMQTT;
 
 /// <summary>
 /// Betreibt einen vollständigen MQTT-Broker im eigenen Prozess (kein separater
-/// Mosquitto-Server mehr nötig). Das CYD-Board verbindet sich direkt mit dieser
-/// App als MQTT-Client.
+/// Mosquitto-Server mehr nötig). Das CYD-Board (oder ein anderer MQTT-Client,
+/// z. B. mit Pulse ESP32-Firmware) verbindet sich direkt mit dieser App.
 /// </summary>
 public sealed class MqttBrokerService
 {
