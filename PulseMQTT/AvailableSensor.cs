@@ -1,6 +1,6 @@
 using LibreHardwareMonitor.Hardware;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 /// <summary>
 /// Ein zur Laufzeit von LibreHardwareMonitor entdeckter Sensor.

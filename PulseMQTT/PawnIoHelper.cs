@@ -7,13 +7,13 @@ using Microsoft.Win32;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 /// <summary>
 /// Erkennt, ob der PawnIO-Treiber installiert ist, und bietet an,
 /// ihn herunterzuladen und zu installieren.
 ///
-/// PCBridge selbst bleibt dabei OHNE Adminrechte – der PawnIO-Installer
+/// PulseMQTT selbst bleibt dabei OHNE Adminrechte – der PawnIO-Installer
 /// fordert UAC eigenständig an, da er einen Kernel-Treiber installiert.
 /// </summary>
 public static class PawnIoHelper
@@ -80,11 +80,11 @@ public static class PawnIoHelper
             "PawnIO stellt den Low-Level-Hardwarezugriff für LibreHardwareMonitor bereit " +
             "(Nachfolger von WinRing0). Ohne ihn sind keine CPU-/GPU-Temperatur- und " +
             "Leistungswerte verfügbar – nur Last-Prozentwerte.\n\n" +
-            "Soll PCBridge den PawnIO-Installer jetzt herunterladen und starten?\n" +
+            "Soll PulseMQTT den PawnIO-Installer jetzt herunterladen und starten?\n" +
             "Windows fragt anschließend nach Administrator-Rechten " +
             "(der Installer benötigt sie für die Treiber-Installation).\n\n" +
             "Alternativ: Manuell von https://pawnio.eu/ herunterladen.",
-            "PawnIO nicht gefunden – PCBridge",
+            "PawnIO nicht gefunden – PulseMQTT",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Information,
             MessageBoxDefaultButton.Button1);
@@ -147,7 +147,7 @@ public static class PawnIoHelper
         }
 
         // Installer starten – Windows zeigt automatisch die UAC-Abfrage,
-        // weil der MSI-Installer Adminrechte benötigt. PCBridge selbst
+        // weil der MSI-Installer Adminrechte benötigt. PulseMQTT selbst
         // eskaliert dabei NICHT.
         try
         {
@@ -161,7 +161,7 @@ public static class PawnIoHelper
             MessageBox.Show(
                 owner,
                 "Der PawnIO-Installer wurde gestartet.\n\n" +
-                "Nach der Installation bitte PCBridge neu starten, " +
+                "Nach der Installation bitte PulseMQTT neu starten, " +
                 "damit der Treiber erkannt wird.",
                 "PawnIO wird installiert",
                 MessageBoxButtons.OK,

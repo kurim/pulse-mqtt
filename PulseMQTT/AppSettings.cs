@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 public sealed class AppSettings
 {
     public int MqttPort { get; set; } = 1883;
-    public string MqttTopic { get; set; } = "pcbridge/hwinfo";
+    public string MqttTopic { get; set; } = "pulsemqtt/hwinfo";
     public double UpdateIntervalSeconds { get; set; } = 2.0;
     public bool StartWithWindows { get; set; }
 
@@ -21,7 +21,7 @@ public sealed class AppSettings
     // ── Persistenz ────────────────────────────────────────────────────────────
 
     private static string ConfigDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PCBridge");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PulseMQTT");
 
     private static string ConfigPath => Path.Combine(ConfigDirectory, "settings.json");
 

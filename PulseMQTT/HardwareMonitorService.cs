@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LibreHardwareMonitor.Hardware;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 /// <summary>
 /// Kapselt LibreHardwareMonitorLib.

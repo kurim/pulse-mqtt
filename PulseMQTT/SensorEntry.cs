@@ -1,4 +1,4 @@
-namespace PCBridge;
+namespace PulseMQTT;
 
 /// <summary>
 /// Speichert die Benutzer-Konfiguration für einen einzelnen Sensor:

@@ -13,8 +13,8 @@ jobs:
       contents: write
 
     env:
-      Solution_Name: PCBridge.sln
-      Project_Path:  PCBridge\PCBridge.csproj
+      Solution_Name: PulseMQTT.sln
+      Project_Path:  PulseMQTT\PulseMQTT.csproj
 
     steps:
       - name: Checkout
@@ -57,8 +57,8 @@ jobs:
       - name: ZIP self-contained
         run: >
           Compress-Archive
-          -Path publish_sc\PCBridge.exe
-          -DestinationPath PCBridge-${{ github.ref_name }}-win-x64.zip
+          -Path publish_sc\PulseMQTT.exe
+          -DestinationPath PulseMQTT-${{ github.ref_name }}-win-x64.zip
 
       # ── Framework-dependent (~8 MB, benötigt .NET 8 Desktop Runtime) ──────
       - name: Publish framework-dependent
@@ -77,14 +77,14 @@ jobs:
       - name: ZIP framework-dependent
         run: >
           Compress-Archive
-          -Path publish_fx\PCBridge.exe
-          -DestinationPath PCBridge-${{ github.ref_name }}-win-x64-net.zip
+          -Path publish_fx\PulseMQTT.exe
+          -DestinationPath PulseMQTT-${{ github.ref_name }}-win-x64-net.zip
 
       # ── GitHub Release mit beiden ZIPs ────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: PCBridge ${{ github.ref_name }}
+          name: PulseMQTT ${{ github.ref_name }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
@@ -93,10 +93,10 @@ jobs:
 
             | Datei | Größe | Voraussetzung |
             |---|---|---|
-            | `PCBridge-${{ github.ref_name }}-win-x64.zip` | ~70 MB | keine – .NET Runtime eingebettet |
-            | `PCBridge-${{ github.ref_name }}-win-x64-net.zip` | ~8 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) erforderlich |
+            | `PulseMQTT-${{ github.ref_name }}-win-x64.zip` | ~70 MB | keine – .NET Runtime eingebettet |
+            | `PulseMQTT-${{ github.ref_name }}-win-x64-net.zip` | ~8 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) erforderlich |
 
             > Für Temperaturen und Watt-Werte wird zusätzlich der [PawnIO-Treiber](https://pawnio.eu/) benötigt.
           files: |
-            PCBridge-${{ github.ref_name }}-win-x64.zip
-            PCBridge-${{ github.ref_name }}-win-x64-net.zip
+            PulseMQTT-${{ github.ref_name }}-win-x64.zip
+            PulseMQTT-${{ github.ref_name }}-win-x64-net.zip

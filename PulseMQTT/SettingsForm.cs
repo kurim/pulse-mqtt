@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 public sealed class SettingsForm : Form
 {
@@ -17,7 +17,7 @@ public sealed class SettingsForm : Form
     {
         Result = current.Clone();
 
-        Text            = "PCBridge – Einstellungen";
+        Text            = "PulseMQTT – Einstellungen";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox     = false;
         MinimizeBox     = false;
@@ -83,7 +83,7 @@ public sealed class SettingsForm : Form
             Result = new AppSettings
             {
                 MqttPort              = (int)_portInput.Value,
-                MqttTopic             = string.IsNullOrWhiteSpace(_topicInput.Text) ? "pcbridge/hwinfo" : _topicInput.Text.Trim(),
+                MqttTopic             = string.IsNullOrWhiteSpace(_topicInput.Text) ? "pulsemqtt/hwinfo" : _topicInput.Text.Trim(),
                 UpdateIntervalSeconds = (double)_intervalInput.Value,
                 StartWithWindows      = _autoStartInput.Checked,
                 EnabledSensors        = current.EnabledSensors  // Sensor-Wahl bleibt erhalten

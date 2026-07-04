@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="1.0.0.0" name="CydPcBridge.app"/>
+  <assemblyIdentity version="1.0.0.0" name="PulseMQTT.app"/>
 
   <!--
     asInvoker = Programm läuft immer mit den Rechten des startenden Benutzers.

@@ -11,8 +11,8 @@ jobs:
     runs-on: windows-latest
 
     env:
-      Solution_Name: PCBridge.sln
-      Project_Path:  PCBridge\PCBridge.csproj
+      Solution_Name: PulseMQTT.sln
+      Project_Path:  PulseMQTT\PulseMQTT.csproj
 
     steps:
       - name: Checkout
@@ -47,11 +47,11 @@ jobs:
           --no-restore
 
       - name: Create ZIP
-        run: Compress-Archive -Path publish_output\PCBridge.exe -DestinationPath PCBridge.zip
+        run: Compress-Archive -Path publish_output\PulseMQTT.exe -DestinationPath PulseMQTT.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PCBridge-win-x64
-          path: PCBridge.zip
+          name: PulseMQTT-win-x64
+          path: PulseMQTT.zip
           retention-days: 30

@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "CydPcBridge": {
+    "PulseMQTT": {
       "commandName": "Project",
       "nativeDebugging": false
     }
