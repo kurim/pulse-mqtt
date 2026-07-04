@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using MQTTnet;
 using MQTTnet.Server;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 /// <summary>
 /// Betreibt einen vollständigen MQTT-Broker im eigenen Prozess (kein separater
@@ -80,6 +80,6 @@ public sealed class MqttBrokerService
             .Build();
 
         await _server.InjectApplicationMessage(
-            new InjectedMqttApplicationMessage(message) { SenderClientId = "CydPcBridge" });
+            new InjectedMqttApplicationMessage(message) { SenderClientId = "PulseMQTT" });
     }
 }

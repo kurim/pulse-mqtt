@@ -1,7 +1,7 @@
 using System.Threading;
 using System.Windows.Forms;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 internal static class Program
 {
@@ -14,14 +14,14 @@ internal static class Program
 
         using var mutex = new Mutex(
             initiallyOwned: true,
-            name: "PCBridge-SingleInstance-9F3B1C2A",
+            name: "PulseMQTT-SingleInstance-9F3B1C2A",
             createdNew: out bool isNew);
 
         if (!isNew)
         {
             MessageBox.Show(
-                "PCBridge läuft bereits im Hintergrund.\nSchau im Systray nach dem Symbol.",
-                "PCBridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "PulseMQTT läuft bereits im Hintergrund.\nSchau im Systray nach dem Symbol.",
+                "PulseMQTT", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 

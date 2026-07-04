@@ -6,8 +6,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>PCBridge</AssemblyName>
-    <RootNamespace>PCBridge</RootNamespace>
+    <AssemblyName>PulseMQTT</AssemblyName>
+    <RootNamespace>PulseMQTT</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <InvariantGlobalization>true</InvariantGlobalization>

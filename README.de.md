@@ -1,8 +1,8 @@
-# PCBridge
+# PulseMQTT
 
 > 🇬🇧 [English version](README.md)
 
-**PCBridge** ist eine schlanke Windows-Tray-App, die PC-Hardwaredaten (CPU/GPU-Last, Temperaturen, Leistungsaufnahme) per MQTT publiziert. Sie richtet sich primär an kleine Displays wie das **CYD (Cheap Yellow Display / ESP32-2432S028)**, funktioniert aber mit jedem MQTT-fähigen Client.
+**PulseMQTT** ist eine schlanke Windows-Tray-App, die PC-Hardwaredaten (CPU/GPU-Last, Temperaturen, Leistungsaufnahme) per MQTT publiziert. Sie richtet sich primär an kleine Displays wie das **CYD (Cheap Yellow Display / ESP32-2432S028)**, funktioniert aber mit jedem MQTT-fähigen Client.
 
 ![Tray-Menü](.github/tray_menu.png)
 
@@ -10,7 +10,7 @@
 
 ## Features
 
-- **Eingebetteter MQTT-Broker** – kein separater Mosquitto-Server nötig; das CYD-Board (oder jeder andere Client) verbindet sich direkt mit PCBridge
+- **Eingebetteter MQTT-Broker** – kein separater Mosquitto-Server nötig; das CYD-Board (oder jeder andere Client) verbindet sich direkt mit PulseMQTT
 - **Flexible Sensor-Auswahl** – alle von LibreHardwareMonitor erkannten Sensoren werden aufgelistet; du wählst selbst welche publiziert werden und unter welchem MQTT-Schlüssel
 - **Konfigurierbare MQTT-Schlüssel** – Standardwerte sind kompatibel mit der CYD-Firmware (`cpu_load`, `cpu_temp`, `cpu_power`, `gpu_load`, `gpu_temp`, `gpu_power`)
 - **Tray-Icon** – läuft unsichtbar im Hintergrund, Live-Werte im Tooltip
@@ -31,13 +31,13 @@
 
 ### PawnIO
 
-PCBridge nutzt [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), das intern den **PawnIO-Treiber** (Nachfolger von WinRing0) für den Low-Level-Hardwarezugriff verwendet.
+PulseMQTT nutzt [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), das intern den **PawnIO-Treiber** (Nachfolger von WinRing0) für den Low-Level-Hardwarezugriff verwendet.
 
 - **Download:** https://pawnio.eu/
 - Die Installation erfordert einmalig Adminrechte (Kernel-Treiber)
-- PCBridge bietet die Installation beim ersten Start automatisch an
+- PulseMQTT bietet die Installation beim ersten Start automatisch an
 - Ohne PawnIO sind nur CPU-Last-Werte verfügbar (keine Temperaturen, kein Watt)
-- Für volle Sensordaten: PCBridge über **Rechtsklick → Als Administrator neu starten** erhöht starten
+- Für volle Sensordaten: PulseMQTT über **Rechtsklick → Als Administrator neu starten** erhöht starten
 
 ---
 
@@ -46,7 +46,7 @@ PCBridge nutzt [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor
 ### Option A – Einfach starten (Framework-abhängig, ~8 MB)
 
 1. [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) installieren (einmalig)
-2. `PCBridge.exe` starten
+2. `PulseMQTT.exe` starten
 3. Beim ersten Start: Sensor-Auswahl bestätigen oder anpassen
 
 ### Option B – Portable Single-File-EXE (~70 MB, kein .NET nötig)
@@ -55,7 +55,7 @@ PCBridge nutzt [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor
 .\publish.ps1 -Mode NoTrim
 ```
 
-Die EXE liegt anschließend unter `publish_notrim\PCBridge.exe` und läuft auf jedem Windows-x64-Rechner ohne zusätzliche Software.
+Die EXE liegt anschließend unter `publish_notrim\PulseMQTT.exe` und läuft auf jedem Windows-x64-Rechner ohne zusätzliche Software.
 
 ### Option C – Visual Studio Publish
 
@@ -74,7 +74,7 @@ Rechtsklick auf Projekt → **Veröffentlichen** → Profil wählen:
 ### Erster Start
 
 Beim allerersten Start:
-1. PCBridge entdeckt automatisch alle verfügbaren Sensoren
+1. PulseMQTT entdeckt automatisch alle verfügbaren Sensoren
 2. Sinnvolle Standardwerte werden vorausgewählt (CYD-kompatible MQTT-Schlüssel)
 3. Der **Sensor-Picker** öffnet sich zur Bestätigung oder Anpassung
 
@@ -105,17 +105,17 @@ Beim allerersten Start:
 | Feld | Standard | Beschreibung |
 |---|---|---|
 | MQTT-Port | `1883` | Port des eingebetteten Brokers |
-| MQTT-Topic | `pcbridge/hwinfo` | Topic unter dem der Payload publiziert wird |
+| MQTT-Topic | `pulsemqtt/hwinfo` | Topic unter dem der Payload publiziert wird |
 | Update-Intervall | `2,0 s` | Wie oft neue Werte gesendet werden |
 | Mit Windows starten | aus | Autostart (Registry oder Task Scheduler) |
 
-Gespeichert unter `%AppData%\PCBridge\settings.json`.
+Gespeichert unter `%AppData%\PulseMQTT\settings.json`.
 
 ---
 
 ## MQTT-Payload
 
-PCBridge publiziert ein JSON-Objekt mit den vom Benutzer konfigurierten Feldern.  
+PulseMQTT publiziert ein JSON-Objekt mit den vom Benutzer konfigurierten Feldern.  
 Standardauswahl (CYD-Firmware-kompatibel):
 
 ```json
@@ -137,9 +137,9 @@ Im CYD-Webinterface (Captive Portal oder `http://<CYD-IP>`):
 
 | Feld | Wert |
 |---|---|
-| `mqtt_host` | LAN-IP des PCs auf dem PCBridge läuft |
+| `mqtt_host` | LAN-IP des PCs auf dem PulseMQTT läuft |
 | `mqtt_port` | `1883` (oder wie konfiguriert) |
-| `mqtt_topic` | `pcbridge/hwinfo` (oder wie konfiguriert) |
+| `mqtt_topic` | `pulsemqtt/hwinfo` (oder wie konfiguriert) |
 
 ---
 
@@ -150,7 +150,7 @@ Im CYD-Webinterface (Captive Portal oder `http://<CYD-IP>`):
 | Normaler Benutzer | `HKCU\...\Run` Registry-Eintrag | keiner |
 | Administrator | Windows Task Scheduler (`/rl highest`) | keiner |
 
-Wenn PCBridge als Admin läuft und „Mit Windows starten" aktiviert ist, wird ein Task-Scheduler-Task angelegt, der beim Login ohne UAC-Prompt erhöht startet.
+Wenn PulseMQTT als Admin läuft und „Mit Windows starten" aktiviert ist, wird ein Task-Scheduler-Task angelegt, der beim Login ohne UAC-Prompt erhöht startet.
 
 ---
 
@@ -161,16 +161,16 @@ Wenn PCBridge als Admin läuft und „Mit Windows starten" aktiviert ist, wird e
 - Windows (WinForms-Ziel)
 
 ```powershell
-git clone https://github.com/<dein-username>/PCBridge.git
-cd PCBridge
+git clone https://github.com/<dein-username>/PulseMQTT.git
+cd PulseMQTT
 dotnet restore
-dotnet run --project PCBridge
+dotnet run --project PulseMQTT
 ```
 
 **Single-File-EXE erstellen:**
 
 ```powershell
-cd PCBridge
+cd PulseMQTT
 .\publish.ps1                    # NoTrim ~70 MB (empfohlen)
 .\publish.ps1 -Mode Fx           # Framework-abhängig ~8 MB
 ```
@@ -180,8 +180,8 @@ cd PCBridge
 ## Projektstruktur
 
 ```
-PCBridge.sln
-PCBridge/
+PulseMQTT.sln
+PulseMQTT/
 ├── Program.cs                  # Einstiegspunkt, Single-Instance-Check
 ├── TrayAppContext.cs           # Tray-Icon, Menü, Poll-Timer, Orchestrierung
 ├── AppSettings.cs              # Einstellungen (JSON unter %AppData%)
@@ -207,7 +207,7 @@ PCBridge/
 
 ## Lizenzen
 
-PCBridge selbst ist unter der **MIT License** veröffentlicht.
+PulseMQTT selbst ist unter der **MIT License** veröffentlicht.
 
 ### Verwendete Bibliotheken
 
@@ -220,7 +220,7 @@ PCBridge selbst ist unter der **MIT License** veröffentlicht.
 | .NET 8 Runtime | MIT | Microsoft / .NET Foundation |
 
 **Hinweis zu MPL 2.0 (LibreHardwareMonitorLib):**  
-Die Mozilla Public License 2.0 ist eine schwache Copyleft-Lizenz. Sie gilt nur für Änderungen an den Dateien der Bibliothek selbst – nicht für den PCBridge-Code, der sie *verwendet*. PCBridge nimmt keine Änderungen an LibreHardwareMonitorLib vor.  
+Die Mozilla Public License 2.0 ist eine schwache Copyleft-Lizenz. Sie gilt nur für Änderungen an den Dateien der Bibliothek selbst – nicht für den PulseMQTT-Code, der sie *verwendet*. PulseMQTT nimmt keine Änderungen an LibreHardwareMonitorLib vor.  
 Vollständiger Lizenztext: https://www.mozilla.org/en-US/MPL/2.0/
 
 ---

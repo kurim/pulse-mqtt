@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 public sealed class TrayAppContext : ApplicationContext
 {
@@ -56,7 +56,7 @@ public sealed class TrayAppContext : ApplicationContext
         _trayIcon = new NotifyIcon
         {
             Icon             = LoadAppIcon(),
-            Text             = "PCBridge – wird gestartet...",
+            Text             = "PulseMQTT – wird gestartet...",
             ContextMenuStrip = menu,
             Visible          = true
         };
@@ -103,7 +103,7 @@ public sealed class TrayAppContext : ApplicationContext
     private static Icon LoadAppIcon()
     {
         using var stream = typeof(TrayAppContext).Assembly
-            .GetManifestResourceStream("PCBridge.app.ico");
+            .GetManifestResourceStream("PulseMQTT.app.ico");
         if (stream is not null) return new Icon(stream);
         return SystemIcons.Application;
     }
@@ -117,12 +117,12 @@ public sealed class TrayAppContext : ApplicationContext
         try
         {
             await _broker.StartAsync(settings.MqttPort);
-            _trayIcon.Text = Truncate($"PCBridge – Port {settings.MqttPort} | {settings.MqttTopic}");
+            _trayIcon.Text = Truncate($"PulseMQTT – Port {settings.MqttPort} | {settings.MqttTopic}");
         }
         catch (Exception ex)
         {
-            _trayIcon.Text = Truncate($"PCBridge – MQTT-Fehler: {ex.Message}");
-            _trayIcon.ShowBalloonTip(5000, "PCBridge",
+            _trayIcon.Text = Truncate($"PulseMQTT – MQTT-Fehler: {ex.Message}");
+            _trayIcon.ShowBalloonTip(5000, "PulseMQTT",
                 $"MQTT-Broker konnte nicht auf Port {settings.MqttPort} gestartet werden:\n{ex.Message}",
                 ToolTipIcon.Error);
         }
@@ -148,7 +148,7 @@ public sealed class TrayAppContext : ApplicationContext
                 if (!hasData && !IsAdmin && PawnIoHelper.IsInstalled())
                 {
                     _accessWarningShown = true;
-                    _trayIcon.ShowBalloonTip(10_000, "PCBridge – Eingeschränkter Zugriff",
+                    _trayIcon.ShowBalloonTip(10_000, "PulseMQTT – Eingeschränkter Zugriff",
                         "Sensor-Werte nicht verfügbar (PawnIO erlaubt Zugriff nur für Admins).\n" +
                         "Rechtsklick → Als Administrator neu starten.",
                         ToolTipIcon.Warning);
@@ -170,12 +170,12 @@ public sealed class TrayAppContext : ApplicationContext
                 .Select(kv => $"{kv.Key}: {kv.Value}"));
 
             _trayIcon.Text = Truncate(
-                $"PCBridge{(IsAdmin ? " 🔒" : "")} – {_broker.ConnectedClients} Client(s) – Port {_settings.MqttPort}\n" +
+                $"PulseMQTT{(IsAdmin ? " 🔒" : "")} – {_broker.ConnectedClients} Client(s) – Port {_settings.MqttPort}\n" +
                 preview);
         }
         catch (Exception ex)
         {
-            _trayIcon.Text = Truncate($"PCBridge – Fehler: {ex.Message}");
+            _trayIcon.Text = Truncate($"PulseMQTT – Fehler: {ex.Message}");
         }
         finally
         {
@@ -211,7 +211,7 @@ public sealed class TrayAppContext : ApplicationContext
     private void OnRestartAsAdminClicked(object? sender, EventArgs e)
     {
         var r = MessageBox.Show(
-            "PCBridge wird als Administrator neu gestartet.\n" +
+            "PulseMQTT wird als Administrator neu gestartet.\n" +
             "Windows fragt einmalig nach dem Admin-Passwort (UAC).",
             "Als Administrator neu starten",
             MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
@@ -238,7 +238,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         if (PawnIoHelper.IsInstalled())
         {
-            MessageBox.Show("PawnIO ist bereits installiert.", "PCBridge",
+            MessageBox.Show("PawnIO ist bereits installiert.", "PulseMQTT",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -258,7 +258,7 @@ public sealed class TrayAppContext : ApplicationContext
 
     private static void SetAutoStart(bool enabled)
     {
-        const string taskName = "PCBridge";
+        const string taskName = "PulseMQTT";
         var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
 
         if (enabled && IsAdmin)

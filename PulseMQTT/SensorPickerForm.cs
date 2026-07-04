@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace PCBridge;
+namespace PulseMQTT;
 
 /// <summary>
 /// Dialog zur Auswahl und Konfiguration der zu publizierenden Sensoren.
@@ -38,7 +38,7 @@ public sealed class SensorPickerForm : Form
         _existingEntries = existingEntries;
         _getLiveValues  = getLiveValues;
 
-        Text            = "PCBridge – Sensoren konfigurieren";
+        Text            = "PulseMQTT – Sensoren konfigurieren";
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimumSize     = new Size(750, 450);
         Size            = new Size(860, 560);
