@@ -104,8 +104,12 @@ Opened via **right-click → Select sensors…** or **double-click** on the tray
 |---|---|---|
 | MQTT port | `1883` | Port of the embedded broker |
 | MQTT topic | `pulsemqtt/hwinfo` | Topic under which the payload is published |
+| MQTT username | empty | Optional – if set, clients must authenticate |
+| MQTT password | empty | Optional – used together with the username |
 | Update interval | `2.0 s` | How often new values are sent |
 | Start with Windows | off | Autostart (registry or Task Scheduler) |
+
+If username and password are left empty, the broker accepts anonymous connections (default). Set both to require clients to authenticate before they can connect.
 
 Saved to `%AppData%\PulseMQTT\settings.json`.
 

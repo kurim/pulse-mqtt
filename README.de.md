@@ -106,8 +106,12 @@ Beim allerersten Start:
 |---|---|---|
 | MQTT-Port | `1883` | Port des eingebetteten Brokers |
 | MQTT-Topic | `pulsemqtt/hwinfo` | Topic unter dem der Payload publiziert wird |
+| MQTT-Benutzername | leer | Optional – wenn gesetzt, müssen sich Clients authentifizieren |
+| MQTT-Passwort | leer | Optional – wird zusammen mit dem Benutzernamen verwendet |
 | Update-Intervall | `2,0 s` | Wie oft neue Werte gesendet werden |
 | Mit Windows starten | aus | Autostart (Registry oder Task Scheduler) |
+
+Bleiben Benutzername und Passwort leer, akzeptiert der Broker anonyme Verbindungen (Standard). Werden beide gesetzt, müssen sich Clients vor dem Verbindungsaufbau authentifizieren.
 
 Gespeichert unter `%AppData%\PulseMQTT\settings.json`.
 
