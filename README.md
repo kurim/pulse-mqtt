@@ -102,15 +102,20 @@ Opened via **right-click → Select sensors…** or **double-click** on the tray
 
 | Field | Default | Description |
 |---|---|---|
+| Send via MQTT | on | Toggles the MQTT output (embedded broker) on/off |
 | MQTT port | `1883` | Port of the embedded broker |
 | MQTT topic | `pulsemqtt/hwinfo` | Topic under which the payload is published |
 | MQTT username | empty | Optional – if set, clients must authenticate |
 | MQTT password | empty | Optional – used together with the username |
+| Send via USB/serial | off | Toggles the additional/alternative output over a COM port on/off |
+| Serial port | – | COM port that receives the same JSON lines at 115200 baud (compatible with the Pulse ESP32 firmware, `hw_source = USB`) |
 | Update interval | `2.0 s` | How often new values are sent |
 | Start with Windows | off | Autostart (registry or Task Scheduler) |
 | Language | Automatic | Automatic (follows Windows), German, or English |
 
 If username and password are left empty, the broker accepts anonymous connections (default). Set both to require clients to authenticate before they can connect.
+
+"Send via MQTT" and "Send via USB/serial" can be toggled independently – both paths can be active at the same time. For USB/serial, the selected COM port must match the hardware data source configured in the ESP32 web portal.
 
 Saved to `%AppData%\PulseMQTT\settings.json`.
 

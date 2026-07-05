@@ -20,6 +20,23 @@ public sealed class AppSettings
     public string MqttPassword { get; set; } = "";
 
     /// <summary>
+    /// Ob die Hardware-Daten über den eingebetteten MQTT-Broker gesendet werden.
+    /// Unabhängig von <see cref="UseSerial"/> schaltbar – beide Wege können
+    /// gleichzeitig aktiv sein.
+    /// </summary>
+    public bool UseMqtt { get; set; } = true;
+
+    /// <summary>
+    /// Ob die Hardware-Daten zusätzlich/alternativ als newline-getrennte JSON-
+    /// Zeilen über einen seriellen Port (USB) gesendet werden, kompatibel zur
+    /// Pulse ESP32-Firmware (115200 Baud, 8N1, kein Handshake).
+    /// </summary>
+    public bool UseSerial { get; set; } = false;
+
+    /// <summary>Name des COM-Ports für die serielle Ausgabe, z. B. "COM3".</summary>
+    public string SerialPortName { get; set; } = "";
+
+    /// <summary>
     /// Anzeigesprache: "auto" (Windows-Sprache), "de" oder "en".
     /// </summary>
     public string Language { get; set; } = "auto";
