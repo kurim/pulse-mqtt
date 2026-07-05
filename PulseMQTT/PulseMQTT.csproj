@@ -45,6 +45,8 @@
     <TrimmerRootAssembly Include="MQTTnet.Server" />
     <!-- Service-Controller für PawnIO-Erkennung -->
     <TrimmerRootAssembly Include="System.ServiceProcess.ServiceController" />
+    <!-- USB/Seriell-Ausgabe -->
+    <TrimmerRootAssembly Include="System.IO.Ports" />
   </ItemGroup>
 
   <ItemGroup>
@@ -56,6 +58,7 @@
     <PackageReference Include="MQTTnet.Server" Version="5.*" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.*" />
+    <PackageReference Include="System.IO.Ports" Version="8.*" />
   </ItemGroup>
 
   <Target Name="RemoveMonoPosixHelpers" AfterTargets="ComputeFilesToPublish">

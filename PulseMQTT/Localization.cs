@@ -81,11 +81,18 @@ public static class Localization
         ["Tray.PortTopic"] = ("{0} – Port {1} | {2}", "{0} – port {1} | {2}"),
         ["Tray.MqttError"] = ("{0} – MQTT-Fehler: {1}", "{0} – MQTT error: {1}"),
         ["Tray.Error"] = ("{0} – Fehler: {1}", "{0} – Error: {1}"),
-        ["Tray.Status"] = ("{0}{1} – {2} Client(s) – Port {3}\n{4}", "{0}{1} – {2} client(s) – port {3}\n{4}"),
+        ["Tray.Status"] = ("{0}{1} – {2}\n{3}", "{0}{1} – {2}\n{3}"),
+        ["Tray.Source.Mqtt"] = ("MQTT ({0} Client(s), Port {1})", "MQTT ({0} client(s), port {1})"),
+        ["Tray.Source.Serial"] = ("USB ({0})", "USB ({0})"),
+        ["Tray.Source.SerialDisconnected"] = ("USB ({0}, getrennt)", "USB ({0}, disconnected)"),
+        ["Tray.Source.None"] = ("keine Quelle aktiv", "no source active"),
 
         ["Balloon.MqttStartFailed.Body"] = (
             "MQTT-Broker konnte nicht auf Port {0} gestartet werden:\n{1}",
             "MQTT broker could not be started on port {0}:\n{1}"),
+        ["Balloon.SerialStartFailed.Body"] = (
+            "USB/Seriell-Port {0} konnte nicht geöffnet werden:\n{1}",
+            "USB/serial port {0} could not be opened:\n{1}"),
         ["Balloon.RestrictedAccess.Title"] = (
             "PulseMQTT – Eingeschränkter Zugriff", "PulseMQTT – Restricted access"),
         ["Balloon.RestrictedAccess.Body"] = (
@@ -106,10 +113,19 @@ public static class Localization
 
         // ── Einstellungen-Dialog ────────────────────────────────────────────
         ["Settings.Title"] = ("PulseMQTT – Einstellungen", "PulseMQTT – Settings"),
+        ["Settings.UseMqtt"] = ("MQTT senden:", "Send via MQTT:"),
         ["Settings.Port"] = ("MQTT-Port:", "MQTT port:"),
         ["Settings.Topic"] = ("MQTT-Topic:", "MQTT topic:"),
         ["Settings.Username"] = ("MQTT-Benutzername:", "MQTT username:"),
         ["Settings.Password"] = ("MQTT-Passwort:", "MQTT password:"),
+        ["Settings.UseSerial"] = ("USB/Seriell senden:", "Send via USB/serial:"),
+        ["Settings.SerialPort"] = ("Serieller Port:", "Serial port:"),
+        ["Settings.SerialPort.Refresh"] = ("Aktualisieren", "Refresh"),
+        ["Settings.SerialHint"] = (
+            "Sendet dieselben JSON-Daten wie MQTT als Textzeilen über USB (115200 Baud). " +
+            "Der Port muss mit der im Gerät gewählten Datenquelle übereinstimmen (Webportal: Hardwaredaten-Quelle).",
+            "Sends the same JSON data as MQTT as text lines over USB (115200 baud). " +
+            "The port must match the data source selected on the device (web portal: hardware data source)."),
         ["Settings.Interval"] = ("Update-Intervall (Sek.):", "Update interval (sec.):"),
         ["Settings.AutoStart"] = ("Mit Windows starten:", "Start with Windows:"),
         ["Settings.Language"] = ("Sprache:", "Language:"),

@@ -16,6 +16,7 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly NotifyIcon _trayIcon;
     private readonly System.Windows.Forms.Timer _pollTimer;
     private readonly MqttBrokerService _broker = new();
+    private readonly SerialBridgeService _serial = new();
     private readonly HardwareMonitorService _hardware = new();
     private AppSettings _settings;
     private bool _accessWarningShown;
@@ -122,17 +123,42 @@ public sealed class TrayAppContext : ApplicationContext
         _pollTimer.Stop();
         _pollTimer.Interval = Math.Max(250, (int)(settings.UpdateIntervalSeconds * 1000));
 
-        try
+        if (settings.UseMqtt)
         {
-            await _broker.StartAsync(settings.MqttPort, settings.MqttUsername, settings.MqttPassword);
-            _trayIcon.Text = Truncate(Localization.T("Tray.PortTopic", "PulseMQTT", settings.MqttPort, settings.MqttTopic));
+            try
+            {
+                await _broker.StartAsync(settings.MqttPort, settings.MqttUsername, settings.MqttPassword);
+                _trayIcon.Text = Truncate(Localization.T("Tray.PortTopic", "PulseMQTT", settings.MqttPort, settings.MqttTopic));
+            }
+            catch (Exception ex)
+            {
+                _trayIcon.Text = Truncate(Localization.T("Tray.MqttError", "PulseMQTT", ex.Message));
+                _trayIcon.ShowBalloonTip(5000, "PulseMQTT",
+                    Localization.T("Balloon.MqttStartFailed.Body", settings.MqttPort, ex.Message),
+                    ToolTipIcon.Error);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            _trayIcon.Text = Truncate(Localization.T("Tray.MqttError", "PulseMQTT", ex.Message));
-            _trayIcon.ShowBalloonTip(5000, "PulseMQTT",
-                Localization.T("Balloon.MqttStartFailed.Body", settings.MqttPort, ex.Message),
-                ToolTipIcon.Error);
+            await _broker.StopAsync();
+        }
+
+        if (settings.UseSerial && !string.IsNullOrWhiteSpace(settings.SerialPortName))
+        {
+            try
+            {
+                await _serial.OpenAsync(settings.SerialPortName);
+            }
+            catch (Exception ex)
+            {
+                _trayIcon.ShowBalloonTip(5000, "PulseMQTT",
+                    Localization.T("Balloon.SerialStartFailed.Body", settings.SerialPortName, ex.Message),
+                    ToolTipIcon.Error);
+            }
+        }
+        else
+        {
+            await _serial.CloseAsync();
         }
 
         SetAutoStart(settings.StartWithWindows);
@@ -169,16 +195,21 @@ public sealed class TrayAppContext : ApplicationContext
                 if (values.TryGetValue(entry.Identifier, out var val))
                     payload[entry.MqttKey] = MathF.Round(val, 1);
 
-            await _broker.PublishAsync(_settings.MqttTopic,
-                JsonSerializer.Serialize(payload));
+            var json = JsonSerializer.Serialize(payload);
+
+            if (_settings.UseMqtt)
+                await _broker.PublishAsync(_settings.MqttTopic, json);
+            if (_settings.UseSerial)
+                await _serial.WriteLineAsync(json);
 
             // Tooltip: die ersten 3-4 Werte anzeigen
             var preview = string.Join("  │  ", payload
                 .Take(4)
                 .Select(kv => $"{kv.Key}: {kv.Value}"));
 
+            var source = BuildSourceLabel();
             _trayIcon.Text = Truncate(Localization.T("Tray.Status",
-                "PulseMQTT", IsAdmin ? " 🔒" : "", _broker.ConnectedClients, _settings.MqttPort, preview));
+                "PulseMQTT", IsAdmin ? " 🔒" : "", source, preview));
         }
         catch (Exception ex)
         {
@@ -188,6 +219,19 @@ public sealed class TrayAppContext : ApplicationContext
         {
             _isPublishing = false;
         }
+    }
+
+    private string BuildSourceLabel()
+    {
+        var parts = new List<string>();
+        if (_settings.UseMqtt)
+            parts.Add(Localization.T("Tray.Source.Mqtt", _broker.ConnectedClients, _settings.MqttPort));
+        if (_settings.UseSerial)
+            parts.Add(_serial.IsOpen
+                ? Localization.T("Tray.Source.Serial", _settings.SerialPortName)
+                : Localization.T("Tray.Source.SerialDisconnected", _settings.SerialPortName));
+
+        return parts.Count > 0 ? string.Join(" + ", parts) : Localization.T("Tray.Source.None");
     }
 
     private static string Truncate(string s) => s.Length <= 127 ? s : s[..127];
@@ -256,6 +300,7 @@ public sealed class TrayAppContext : ApplicationContext
         _pollTimer.Stop();
         _trayIcon.Visible = false;
         await _broker.StopAsync();
+        await _serial.CloseAsync();
         _hardware.Dispose();
         Application.Exit();
     }
