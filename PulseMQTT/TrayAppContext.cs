@@ -149,7 +149,7 @@ public sealed class TrayAppContext : ApplicationContext
         {
             try
             {
-                await _serial.OpenAsync(settings.SerialPortName);
+                await _serial.OpenAsync(settings.SerialPortName, settings.SerialMode);
             }
             catch (Exception ex)
             {
@@ -239,7 +239,7 @@ public sealed class TrayAppContext : ApplicationContext
         _nextSerialRetryUtc = DateTime.UtcNow + SerialRetryInterval;
         try
         {
-            await _serial.OpenAsync(_settings.SerialPortName);
+            await _serial.OpenAsync(_settings.SerialPortName, _settings.SerialMode);
         }
         catch { /* nächster Versuch nach Cooldown */ }
     }

@@ -15,6 +15,7 @@ public sealed class SettingsForm : Form
     private readonly CheckBox      _useSerialInput;
     private readonly ComboBox      _serialPortInput;
     private readonly Button        _serialRefreshButton;
+    private readonly ComboBox      _serialModeInput;
     private readonly NumericUpDown _intervalInput;
     private readonly CheckBox      _autoStartInput;
     private readonly ComboBox      _languageInput;
@@ -32,16 +33,16 @@ public sealed class SettingsForm : Form
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
         AutoScaleMode   = AutoScaleMode.Dpi;
-        ClientSize      = new Size(380, 255);
+        ClientSize      = new Size(460, 255);
 
-        const int rowCount = 10;
+        const int rowCount = 11;
         var layout = new TableLayoutPanel
         {
-            Left = 12, Top = 12, Width = 356,
+            Left = 12, Top = 12, Width = 436,
             ColumnCount = 2, RowCount = rowCount, AutoSize = true
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 191));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 271));
         for (int i = 0; i < rowCount; i++)
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
 
@@ -74,26 +75,43 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(MkLabel(Localization.T("Settings.SerialPort")), 0, 6);
         var serialPanel = new FlowLayoutPanel
             { FlowDirection = FlowDirection.LeftToRight, AutoSize = true, WrapContents = false };
-        _serialPortInput = new ComboBox { Width = 120, DropDownStyle = ComboBoxStyle.DropDownList };
-        _serialRefreshButton = new Button { Text = Localization.T("Settings.SerialPort.Refresh"), Width = 60 };
+        _serialPortInput = new ComboBox { Width = 160, DropDownStyle = ComboBoxStyle.DropDownList };
+        _serialRefreshButton = new Button
+        {
+            Text = "↻", // ⟳ Refresh-Symbol statt Text, damit der Button nicht abgeschnitten wird
+            Width = 32, Margin = new Padding(6, 0, 0, 0),
+            Font = new Font(Font!.FontFamily, 11f)
+        };
+        var refreshTip = new ToolTip();
+        refreshTip.SetToolTip(_serialRefreshButton, Localization.T("Settings.SerialPort.Refresh"));
         _serialRefreshButton.Click += (_, _) => RefreshSerialPorts(current.SerialPortName);
         serialPanel.Controls.Add(_serialPortInput);
         serialPanel.Controls.Add(_serialRefreshButton);
         layout.Controls.Add(serialPanel, 1, 6);
 
-        layout.Controls.Add(MkLabel(Localization.T("Settings.Interval")), 0, 7);
+        layout.Controls.Add(MkLabel(Localization.T("Settings.SerialMode")), 0, 7);
+        _serialModeInput = new ComboBox { Width = 265, DropDownStyle = ComboBoxStyle.DropDownList };
+        _serialModeInput.Items.AddRange(
+        [
+            new SerialModeItem(SerialConnectionMode.UsbSerialJtag, Localization.T("Settings.SerialMode.UsbSerialJtag")),
+            new SerialModeItem(SerialConnectionMode.Uart0,          Localization.T("Settings.SerialMode.Uart0")),
+        ]);
+        _serialModeInput.SelectedIndex = current.SerialMode == SerialConnectionMode.Uart0 ? 1 : 0;
+        layout.Controls.Add(_serialModeInput, 1, 7);
+
+        layout.Controls.Add(MkLabel(Localization.T("Settings.Interval")), 0, 8);
         _intervalInput = new NumericUpDown
         {
             Minimum = 0.5m, Maximum = 60m, DecimalPlaces = 1, Increment = 0.5m,
             Value = (decimal)current.UpdateIntervalSeconds, Width = 100
         };
-        layout.Controls.Add(_intervalInput, 1, 7);
+        layout.Controls.Add(_intervalInput, 1, 8);
 
-        layout.Controls.Add(MkLabel(Localization.T("Settings.AutoStart")), 0, 8);
+        layout.Controls.Add(MkLabel(Localization.T("Settings.AutoStart")), 0, 9);
         _autoStartInput = new CheckBox { Checked = current.StartWithWindows };
-        layout.Controls.Add(_autoStartInput, 1, 8);
+        layout.Controls.Add(_autoStartInput, 1, 9);
 
-        layout.Controls.Add(MkLabel(Localization.T("Settings.Language")), 0, 9);
+        layout.Controls.Add(MkLabel(Localization.T("Settings.Language")), 0, 10);
         _languageInput = new ComboBox { Width = 185, DropDownStyle = ComboBoxStyle.DropDownList };
         _languageInput.Items.AddRange(
         [
@@ -107,7 +125,7 @@ public sealed class SettingsForm : Form
             "en" => 2,
             _ => 0
         };
-        layout.Controls.Add(_languageInput, 1, 9);
+        layout.Controls.Add(_languageInput, 1, 10);
 
         Controls.Add(layout);
 
@@ -120,7 +138,7 @@ public sealed class SettingsForm : Form
         {
             Text      = Localization.T("Settings.Hint") + "\n" + Localization.T("Settings.SerialHint"),
             AutoSize  = false,
-            Left = 12, Width = 356, Height = 56, Top = layout.Bottom + 6,
+            Left = 12, Width = 436, Height = 56, Top = layout.Bottom + 6,
             ForeColor = SystemColors.GrayText
         };
         Controls.Add(hint);
@@ -146,6 +164,7 @@ public sealed class SettingsForm : Form
                 MqttPassword          = _passwordInput.Text,
                 UseSerial             = _useSerialInput.Checked,
                 SerialPortName        = _serialPortInput.SelectedItem as string ?? "",
+                SerialMode            = ((SerialModeItem)_serialModeInput.SelectedItem!).Mode,
                 UpdateIntervalSeconds = (double)_intervalInput.Value,
                 StartWithWindows      = _autoStartInput.Checked,
                 Language              = ((LanguageItem)_languageInput.SelectedItem!).Code,
@@ -183,12 +202,18 @@ public sealed class SettingsForm : Form
         var serial = _useSerialInput.Checked;
         _serialPortInput.Enabled     = serial;
         _serialRefreshButton.Enabled = serial;
+        _serialModeInput.Enabled     = serial;
     }
 
     private static Label MkLabel(string t) => new()
         { Text = t, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(0, 8, 8, 0) };
 
     private sealed record LanguageItem(string Code, string DisplayName)
+    {
+        public override string ToString() => DisplayName;
+    }
+
+    private sealed record SerialModeItem(SerialConnectionMode Mode, string DisplayName)
     {
         public override string ToString() => DisplayName;
     }
