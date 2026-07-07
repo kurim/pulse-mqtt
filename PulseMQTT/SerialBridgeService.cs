@@ -16,27 +16,59 @@ public sealed class SerialBridgeService
 {
     private const int BaudRate = 115200;
 
+    /// <summary>
+    /// Manche USB-Serial-Treiber (z.B. verwaiste/"Phantom"-COM-Ports oder
+    /// Adapter mit hängendem CDC-Handshake) blockieren SerialPort.Open()
+    /// bzw. .Write() unbegrenzt. Ohne diese Timeouts friert der aufrufende
+    /// Thread (UI-Thread) komplett ein – bis hin zum nicht mehr reagierenden
+    /// Tray-Kontextmenü, das sich nur per Taskmanager beenden lässt.
+    /// </summary>
+    private const int OpenTimeoutMs = 3000;
+    private const int IoTimeoutMs   = 1000;
+
     private SerialPort? _port;
 
     public bool IsOpen => _port?.IsOpen ?? false;
     public string? PortName => _port?.PortName;
 
-    public Task OpenAsync(string portName)
+    public async Task OpenAsync(string portName)
     {
         Close();
 
         if (string.IsNullOrWhiteSpace(portName))
-            return Task.CompletedTask;
+            return;
 
-        _port = new SerialPort(portName, BaudRate, Parity.None, 8, StopBits.One)
+        var port = new SerialPort(portName, BaudRate, Parity.None, 8, StopBits.One)
         {
-            Handshake = Handshake.None,
-            Encoding  = Encoding.UTF8,
-            NewLine   = "\n",
+            Handshake   = Handshake.None,
+            Encoding    = Encoding.UTF8,
+            NewLine     = "\n",
+            ReadTimeout  = IoTimeoutMs,
+            WriteTimeout = IoTimeoutMs,
+            // Der ESP32-C3 hat eine native USB-CDC-Schnittstelle (kein UART-
+            // Bridge-Chip). Manche CDC-ACM-Stacks liefern Daten erst, sobald
+            // DTR/RTS gesetzt sind – das signalisiert "ein Terminal ist
+            // verbunden" (Browser/Web Serial API und Terminalprogramme setzen
+            // dies automatisch beim Öffnen, .NET SerialPort default ist aus).
+            DtrEnable = true,
+            RtsEnable = true,
         };
-        _port.Open();
 
-        return Task.CompletedTask;
+        var openTask = Task.Run(port.Open);
+        var finished = await Task.WhenAny(openTask, Task.Delay(OpenTimeoutMs));
+
+        if (finished != openTask)
+        {
+            // Open() hängt (z.B. defekter/verwaister Treiber) – Port verwerfen
+            // statt den Aufrufer (UI-Thread) auf unbestimmte Zeit zu blockieren.
+            try { port.Dispose(); } catch { /* Port ggf. bereits entfernt */ }
+            throw new TimeoutException($"Timeout beim Öffnen von {portName}.");
+        }
+
+        // Etwaige Exception aus Open() weiterreichen (z.B. "Zugriff verweigert").
+        await openTask;
+
+        _port = port;
     }
 
     public Task CloseAsync()
@@ -61,12 +93,22 @@ public sealed class SerialBridgeService
     }
 
     /// <summary>Schreibt eine JSON-Zeile (mit abschließendem "\n") auf den Port.</summary>
-    public Task WriteLineAsync(string json)
+    public async Task WriteLineAsync(string json)
     {
-        if (_port is not { IsOpen: true })
-            return Task.CompletedTask;
+        var port = _port;
+        if (port is not { IsOpen: true })
+            return;
 
-        _port.Write(json + "\n");
-        return Task.CompletedTask;
+        try
+        {
+            await Task.Run(() => port.Write(json + "\n"));
+        }
+        catch
+        {
+            // Schreiben schlägt fehl (z.B. Gerät abgezogen, Timeout) –
+            // Port schließen statt beim nächsten Tick erneut zu blockieren.
+            Close();
+            throw;
+        }
     }
 }
