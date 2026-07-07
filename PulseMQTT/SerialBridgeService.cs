@@ -23,8 +23,9 @@ public sealed class SerialBridgeService
     /// Thread (UI-Thread) komplett ein – bis hin zum nicht mehr reagierenden
     /// Tray-Kontextmenü, das sich nur per Taskmanager beenden lässt.
     /// </summary>
-    private const int OpenTimeoutMs = 3000;
-    private const int IoTimeoutMs   = 1000;
+    private const int OpenTimeoutMs  = 3000;
+    private const int IoTimeoutMs    = 1000;
+    private const int SettleDelayMs  = 1500;
 
     private SerialPort? _port;
 
@@ -47,11 +48,14 @@ public sealed class SerialBridgeService
             WriteTimeout = IoTimeoutMs,
             // Der ESP32-C3 hat eine native USB-CDC-Schnittstelle (kein UART-
             // Bridge-Chip). Manche CDC-ACM-Stacks liefern Daten erst, sobald
-            // DTR/RTS gesetzt sind – das signalisiert "ein Terminal ist
-            // verbunden" (Browser/Web Serial API und Terminalprogramme setzen
-            // dies automatisch beim Öffnen, .NET SerialPort default ist aus).
+            // DTR gesetzt ist – das signalisiert "ein Terminal ist verbunden"
+            // (Browser/Web Serial API und Terminalprogramme setzen dies
+            // automatisch beim Öffnen, .NET SerialPort default ist aus).
+            // RTS bleibt bewusst aus: auf vielen ESP-Boards ist RTS über die
+            // Auto-Reset-Schaltung mit GPIO0 verbunden – dauerhaft gesetzt
+            // hält das Board im Bootloader-Modus fest, statt die Firmware
+            // laufen zu lassen.
             DtrEnable = true,
-            RtsEnable = true,
         };
 
         var openTask = Task.Run(port.Open);
@@ -67,6 +71,12 @@ public sealed class SerialBridgeService
 
         // Etwaige Exception aus Open() weiterreichen (z.B. "Zugriff verweigert").
         await openTask;
+
+        // DTR löst auf vielen Boards beim Verbinden einen kurzen Reset aus.
+        // Kurz warten, bis die Firmware wieder hochgefahren und die USB-CDC-
+        // Pipe stabil ist, bevor der erste Write erfolgt – sonst schlägt
+        // dieser mit einem low-level USB-Fehler fehl ("Semaphore-Zeitlimit").
+        await Task.Delay(SettleDelayMs);
 
         _port = port;
     }

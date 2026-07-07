@@ -21,6 +21,8 @@ public sealed class TrayAppContext : ApplicationContext
     private AppSettings _settings;
     private bool _accessWarningShown;
     private bool _isPublishing;
+    private DateTime _nextSerialRetryUtc = DateTime.MinValue;
+    private static readonly TimeSpan SerialRetryInterval = TimeSpan.FromSeconds(5);
 
     private static readonly bool IsAdmin =
         new WindowsPrincipal(WindowsIdentity.GetCurrent())
@@ -200,6 +202,8 @@ public sealed class TrayAppContext : ApplicationContext
             if (_settings.UseMqtt)
                 await _broker.PublishAsync(_settings.MqttTopic, json);
             if (_settings.UseSerial)
+                await EnsureSerialConnectedAsync();
+            if (_settings.UseSerial && _serial.IsOpen)
                 await _serial.WriteLineAsync(json);
 
             // Tooltip: die ersten 3-4 Werte anzeigen
@@ -219,6 +223,25 @@ public sealed class TrayAppContext : ApplicationContext
         {
             _isPublishing = false;
         }
+    }
+
+    /// <summary>
+    /// Versucht die serielle Verbindung wiederherzustellen, falls sie (z.B.
+    /// nach einem Board-Reset durch DTR oder einem Schreibfehler) getrennt
+    /// wurde. Läuft mit Cooldown, damit nicht jeder Poll-Tick einen neuen
+    /// Verbindungsversuch (inkl. Timeout) auslöst.
+    /// </summary>
+    private async Task EnsureSerialConnectedAsync()
+    {
+        if (_serial.IsOpen || DateTime.UtcNow < _nextSerialRetryUtc)
+            return;
+
+        _nextSerialRetryUtc = DateTime.UtcNow + SerialRetryInterval;
+        try
+        {
+            await _serial.OpenAsync(_settings.SerialPortName);
+        }
+        catch { /* nächster Versuch nach Cooldown */ }
     }
 
     private string BuildSourceLabel()
