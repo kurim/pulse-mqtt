@@ -78,9 +78,12 @@ public sealed class SettingsForm : Form
         _serialPortInput = new ComboBox { Width = 160, DropDownStyle = ComboBoxStyle.DropDownList };
         _serialRefreshButton = new Button
         {
-            Text = "↻", // ⟳ Refresh-Symbol statt Text, damit der Button nicht abgeschnitten wird
-            Width = 32, Margin = new Padding(6, 0, 0, 0),
-            Font = new Font(Font!.FontFamily, 11f)
+            Text      = "↻", // Refresh-Symbol statt Text, damit der Button nicht abgeschnitten wird
+            Size      = new Size(_serialPortInput.PreferredHeight, _serialPortInput.PreferredHeight),
+            Margin    = new Padding(6, 0, 0, 0),
+            Padding   = new Padding(0),
+            TextAlign = ContentAlignment.MiddleCenter,
+            UseCompatibleTextRendering = false,
         };
         var refreshTip = new ToolTip();
         refreshTip.SetToolTip(_serialRefreshButton, Localization.T("Settings.SerialPort.Refresh"));
