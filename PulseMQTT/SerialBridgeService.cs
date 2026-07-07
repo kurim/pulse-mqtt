@@ -45,6 +45,13 @@ public sealed class SerialBridgeService
             NewLine     = "\n",
             ReadTimeout  = IoTimeoutMs,
             WriteTimeout = IoTimeoutMs,
+            // Der ESP32-C3 hat eine native USB-CDC-Schnittstelle (kein UART-
+            // Bridge-Chip). Manche CDC-ACM-Stacks liefern Daten erst, sobald
+            // DTR/RTS gesetzt sind – das signalisiert "ein Terminal ist
+            // verbunden" (Browser/Web Serial API und Terminalprogramme setzen
+            // dies automatisch beim Öffnen, .NET SerialPort default ist aus).
+            DtrEnable = true,
+            RtsEnable = true,
         };
 
         var openTask = Task.Run(port.Open);
