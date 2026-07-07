@@ -121,6 +121,13 @@ public static class Localization
         ["Settings.UseSerial"] = ("USB/Seriell senden:", "Send via USB/serial:"),
         ["Settings.SerialPort"] = ("Serieller Port:", "Serial port:"),
         ["Settings.SerialPort.Refresh"] = ("Aktualisieren", "Refresh"),
+        ["Settings.SerialMode"] = ("Verbindungsart:", "Connection type:"),
+        ["Settings.SerialMode.UsbSerialJtag"] = (
+            "USB-Serial/JTAG (nativ, z.B. ESP32-C3)",
+            "USB-Serial/JTAG (native, e.g. ESP32-C3)"),
+        ["Settings.SerialMode.Uart0"] = (
+            "UART0 (Adapter-Chip, z.B. CH340/CP210x)",
+            "UART0 (bridge chip, e.g. CH340/CP210x)"),
         ["Settings.SerialHint"] = (
             "Sendet dieselben JSON-Daten wie MQTT als Textzeilen über USB (115200 Baud). " +
             "Der Port muss mit der im Gerät gewählten Datenquelle übereinstimmen (Webportal: Hardwaredaten-Quelle).",

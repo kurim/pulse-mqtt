@@ -37,6 +37,14 @@ public sealed class AppSettings
     public string SerialPortName { get; set; } = "";
 
     /// <summary>
+    /// Wie das Gerät physisch angebunden ist: klassischer UART0-Adapter
+    /// (CH340/CP210x) oder natives USB-CDC/"USB-Serial/JTAG" (z.B. ESP32-C3
+    /// ohne separaten Bridge-Chip). Steuert DTR-Handling und Reset-Settle-
+    /// Zeit beim Öffnen des Ports.
+    /// </summary>
+    public SerialConnectionMode SerialMode { get; set; } = SerialConnectionMode.UsbSerialJtag;
+
+    /// <summary>
     /// Anzeigesprache: "auto" (Windows-Sprache), "de" oder "en".
     /// </summary>
     public string Language { get; set; } = "auto";
