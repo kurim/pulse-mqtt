@@ -35,7 +35,7 @@ public sealed class TrayAppContext : ApplicationContext
 
         _trayIcon = new NotifyIcon
         {
-            Icon             = LoadAppIcon(),
+            Icon             = AppIcon.Load(),
             Text             = Localization.T("Tray.Starting", "PulseMQTT"),
             ContextMenuStrip = BuildContextMenu(),
             Visible          = true
@@ -107,14 +107,6 @@ public sealed class TrayAppContext : ApplicationContext
             _settings.EnabledSensors = picker.Result;
 
         _settings.Save();
-    }
-
-    private static Icon LoadAppIcon()
-    {
-        using var stream = typeof(TrayAppContext).Assembly
-            .GetManifestResourceStream("PulseMQTT.app.ico");
-        if (stream is not null) return new Icon(stream);
-        return SystemIcons.Application;
     }
 
     private async Task ApplySettingsAsync(AppSettings settings)

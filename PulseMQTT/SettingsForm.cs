@@ -27,6 +27,7 @@ public sealed class SettingsForm : Form
         Result = current.Clone();
 
         Text            = Localization.T("Settings.Title");
+        Icon            = AppIcon.Load();
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox     = false;
         MinimizeBox     = false;

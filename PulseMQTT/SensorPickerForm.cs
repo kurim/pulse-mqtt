@@ -39,6 +39,7 @@ public sealed class SensorPickerForm : Form
         _getLiveValues  = getLiveValues;
 
         Text            = Localization.T("Sensors.Title");
+        Icon            = AppIcon.Load();
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimumSize     = new Size(750, 450);
         Size            = new Size(860, 560);
