@@ -15,6 +15,7 @@
 - **No admin rights required to start** – optional "Restart as Administrator" entry in the menu for full sensor access (temperatures/watts require PawnIO driver access)
 - **Autostart** – via registry (standard user) or Task Scheduler (admin mode, no UAC prompt)
 - **PawnIO assistant** – detects whether the driver is installed and offers download + installation
+- **Automatic updates** – checks the latest [GitHub release](https://github.com/kurim/pulse-mqtt/releases/latest), downloads it, swaps the EXE and restarts (can be disabled; manual check via the tray menu)
 - **Single-file EXE** – optionally publishable as a portable single file (no .NET setup required)
 
 ---
@@ -86,6 +87,7 @@ On the very first start:
 | ✔ **Running as Administrator** | Indicates elevated mode (grayed out) |
 | ✔ **PawnIO installed** | PawnIO detected (grayed out) |
 | **Install PawnIO…** | Download + install the driver (only shown if missing) |
+| **Check for updates…** | Checks the latest GitHub release and installs it after confirmation (shows the installed version) |
 | **Exit** | Quit the app |
 
 ### Sensor Picker
@@ -111,6 +113,7 @@ Opened via **right-click → Select sensors…** or **double-click** on the tray
 | Serial port | – | COM port that receives the same JSON lines at 115200 baud (compatible with the Pulse ESP32 firmware, `hw_source = USB`) |
 | Update interval | `2.0 s` | How often new values are sent |
 | Start with Windows | off | Autostart (registry or Task Scheduler) |
+| Automatic updates | on | Checks the latest GitHub release at startup (and daily afterwards), downloads it and restarts PulseMQTT with the new version |
 | Language | Automatic | Automatic (follows Windows), German, or English |
 
 If username and password are left empty, the broker accepts anonymous connections (default). Set both to require clients to authenticate before they can connect.
@@ -198,6 +201,7 @@ PulseMQTT/
 ├── HardwareMonitorService.cs   # LibreHardwareMonitor wrapper, sensor discovery
 ├── MqttBrokerService.cs        # Embedded MQTTnet broker
 ├── PawnIoHelper.cs             # PawnIO detection and installation
+├── UpdateService.cs            # Self-update via GitHub releases
 ├── Localization.cs             # German/English UI strings
 ├── SensorPickerForm.cs         # Sensor selection dialog
 ├── SettingsForm.cs             # Settings dialog
