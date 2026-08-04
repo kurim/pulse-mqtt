@@ -77,6 +77,13 @@ public sealed class AppSettings
     public string Language { get; set; } = "auto";
 
     /// <summary>
+    /// Beim Start (und danach täglich) automatisch das neueste GitHub-Release
+    /// prüfen, herunterladen und installieren. Bei false bleibt der manuelle
+    /// Check über das Tray-Menü verfügbar.
+    /// </summary>
+    public bool AutoUpdate { get; set; } = true;
+
+    /// <summary>
     /// Vom Benutzer ausgewählte Sensoren. Leer = noch nicht konfiguriert,
     /// beim nächsten Start werden Standardwerte vorausgewählt.
     /// </summary>
@@ -136,6 +143,7 @@ public sealed class AppSettings
         SerialPortName        = SerialPortName,
         SerialMode            = SerialMode,
         Language              = Language,
+        AutoUpdate            = AutoUpdate,
         EnabledSensors        = EnabledSensors
             .Select(e => new SensorEntry
                 { Identifier = e.Identifier, MqttKey = e.MqttKey, IsEnabled = e.IsEnabled })

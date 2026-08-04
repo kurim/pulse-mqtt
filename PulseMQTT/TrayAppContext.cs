@@ -17,6 +17,7 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly NotifyIcon _trayIcon;
     private readonly System.Windows.Forms.Timer _pollTimer;
     private readonly System.Windows.Forms.Timer _memoryTrimTimer;
+    private readonly System.Windows.Forms.Timer _updateTimer;
     private readonly MqttBrokerService _broker = new();
     private readonly SerialBridgeService _serial = new();
     private readonly HardwareMonitorService _hardware = new();
@@ -24,9 +25,11 @@ public sealed class TrayAppContext : ApplicationContext
     private AppSettings _settings;
     private bool _accessWarningShown;
     private bool _isPublishing;
+    private bool _updateInProgress;
     private DateTime _nextSerialRetryUtc = DateTime.MinValue;
     private static readonly TimeSpan SerialRetryInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MemoryTrimInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(24);
 
     private static readonly bool IsAdmin =
         new WindowsPrincipal(WindowsIdentity.GetCurrent())
@@ -58,6 +61,16 @@ public sealed class TrayAppContext : ApplicationContext
         _memoryTrimTimer.Tick += (_, _) => TrimMemory();
         _memoryTrimTimer.Start();
 
+        // Täglich still auf eine neue Version prüfen (zusätzlich zum
+        // Check beim Start), sofern automatische Updates aktiviert sind.
+        _updateTimer = new System.Windows.Forms.Timer
+            { Interval = (int)UpdateCheckInterval.TotalMilliseconds };
+        _updateTimer.Tick += async (_, _) =>
+        {
+            if (_settings.AutoUpdate) await CheckForUpdateAsync(interactive: false);
+        };
+        _updateTimer.Start();
+
         _ = StartupAsync();
     }
 
@@ -85,6 +98,9 @@ public sealed class TrayAppContext : ApplicationContext
             menu.Items.Add(Localization.T("Menu.InstallPawnIo"), null, OnInstallPawnIoClicked);
         }
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(Localization.T("Menu.CheckUpdate", UpdateService.CurrentVersionDisplay),
+            null, OnCheckUpdateClicked);
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(Localization.T("Menu.Exit"), null, OnExitClicked);
 
         return menu;
@@ -92,6 +108,10 @@ public sealed class TrayAppContext : ApplicationContext
 
     private async Task StartupAsync()
     {
+        // Nach einem Selbst-Update liegt noch die alte EXE als
+        // "PulseMQTT.exe.old" daneben – im Hintergrund wegräumen.
+        UpdateService.CleanupAfterUpdate();
+
         await ApplySettingsAsync(_settings);
 
         // Sensor-Erstkonfiguration wenn noch nichts ausgewählt wurde
@@ -100,6 +120,12 @@ public sealed class TrayAppContext : ApplicationContext
 
         if (!PawnIoHelper.IsInstalled())
             await PawnIoHelper.OfferInstallAsync();
+
+        if (_settings.AutoUpdate)
+        {
+            await Task.Delay(5000); // App erst in Ruhe hochfahren lassen
+            await CheckForUpdateAsync(interactive: false);
+        }
     }
 
     /// <summary>
@@ -336,10 +362,20 @@ public sealed class TrayAppContext : ApplicationContext
         await PawnIoHelper.OfferInstallAsync();
     }
 
+    private async void OnCheckUpdateClicked(object? sender, EventArgs e)
+        => await CheckForUpdateAsync(interactive: true);
+
     private async void OnExitClicked(object? sender, EventArgs e)
+    {
+        await ShutdownAsync();
+        Application.Exit();
+    }
+
+    private async Task ShutdownAsync()
     {
         _pollTimer.Stop();
         _memoryTrimTimer.Stop();
+        _updateTimer.Stop();
         _trayIcon.Visible = false;
         await _broker.StopAsync();
         await _serial.CloseAsync();
@@ -348,7 +384,101 @@ public sealed class TrayAppContext : ApplicationContext
         _trayIcon.Dispose();
         _pollTimer.Dispose();
         _memoryTrimTimer.Dispose();
-        Application.Exit();
+        _updateTimer.Dispose();
+    }
+
+    // ── Selbst-Update ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Prüft das neueste GitHub-Release und installiert es. Im interaktiven
+    /// Modus (Menüklick) mit Dialogen und Rückfrage; im automatischen Modus
+    /// still, nur mit einer Ballon-Meldung vor dem Neustart.
+    /// </summary>
+    private async Task CheckForUpdateAsync(bool interactive)
+    {
+        if (_updateInProgress) return;
+        _updateInProgress = true;
+        try
+        {
+            UpdateInfo? update;
+            try
+            {
+                update = await UpdateService.CheckForUpdateAsync();
+            }
+            catch (Exception ex)
+            {
+                if (interactive)
+                    MessageBox.Show(Localization.T("Update.CheckFailed.Body", ex.Message),
+                        Localization.T("Update.Title"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return; // automatischer Check scheitert still (kein Internet o.ä.)
+            }
+
+            if (update is null)
+            {
+                if (interactive)
+                    MessageBox.Show(
+                        Localization.T("Update.None.Body", UpdateService.CurrentVersionDisplay),
+                        Localization.T("Update.Title"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (interactive)
+            {
+                var r = MessageBox.Show(
+                    Localization.T("Update.Available.Body",
+                        update.TagName, UpdateService.CurrentVersionDisplay),
+                    Localization.T("Update.Title"),
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (r != DialogResult.Yes) return;
+            }
+            else
+            {
+                _trayIcon.ShowBalloonTip(5000, "PulseMQTT",
+                    Localization.T("Balloon.UpdateInstalling.Body", update.TagName),
+                    ToolTipIcon.Info);
+            }
+
+            ProgressForm? progress = null;
+            try
+            {
+                if (interactive)
+                {
+                    progress = new ProgressForm(
+                        Localization.T("Update.Title"),
+                        Localization.T("Update.Downloading.Body", update.TagName));
+                    progress.Show();
+                    Application.DoEvents();
+                }
+
+                var stagedExe = await UpdateService.DownloadAsync(update);
+                UpdateService.ApplyAndRestart(stagedExe);
+            }
+            catch (Exception ex)
+            {
+                progress?.Close();
+                if (interactive)
+                    MessageBox.Show(Localization.T("Update.Failed.Body", ex.Message),
+                        Localization.T("Update.Title"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                else
+                    _trayIcon.ShowBalloonTip(5000, "PulseMQTT",
+                        Localization.T("Update.Failed.Body", ex.Message), ToolTipIcon.Warning);
+                return;
+            }
+            finally
+            {
+                progress?.Close();
+                progress?.Dispose();
+            }
+
+            // Neue EXE ist an Ort und Stelle, der neue Prozess startet bereits
+            // und wartet auf den Single-Instance-Mutex → sauber beenden.
+            await ShutdownAsync();
+            Application.Exit();
+        }
+        finally
+        {
+            _updateInProgress = false;
+        }
     }
 
     // ── Speicher-Trim ────────────────────────────────────────────────────────

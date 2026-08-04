@@ -74,6 +74,7 @@ public static class Localization
         ["Menu.RunningAsAdmin"] = ("✔ Läuft als Administrator", "✔ Running as administrator"),
         ["Menu.PawnIoInstalled"] = ("✔ PawnIO installiert", "✔ PawnIO installed"),
         ["Menu.InstallPawnIo"] = ("PawnIO installieren...", "Install PawnIO..."),
+        ["Menu.CheckUpdate"] = ("Nach Updates suchen... (v{0})", "Check for updates... (v{0})"),
         ["Menu.Exit"] = ("Beenden", "Exit"),
 
         // ── Tray-Text ───────────────────────────────────────────────────────
@@ -111,6 +112,33 @@ public static class Localization
         ["Dialog.RestartFailed.Body"] = ("Neustart fehlgeschlagen:\n{0}", "Restart failed:\n{0}"),
         ["Dialog.PawnIoAlready.Body"] = ("PawnIO ist bereits installiert.", "PawnIO is already installed."),
 
+        // ── Selbst-Update ───────────────────────────────────────────────────
+        ["Update.Title"] = ("PulseMQTT – Update", "PulseMQTT – Update"),
+        ["Update.None.Body"] = (
+            "PulseMQTT ist aktuell (Version {0}).",
+            "PulseMQTT is up to date (version {0})."),
+        ["Update.CheckFailed.Body"] = (
+            "Update-Prüfung fehlgeschlagen:\n{0}",
+            "Update check failed:\n{0}"),
+        ["Update.Available.Body"] = (
+            "Version {0} ist verfügbar (installiert: {1}).\n\n" +
+            "Jetzt herunterladen und installieren?\n" +
+            "PulseMQTT startet danach automatisch neu.",
+            "Version {0} is available (installed: {1}).\n\n" +
+            "Download and install now?\n" +
+            "PulseMQTT will restart automatically afterwards."),
+        ["Update.Downloading.Body"] = (
+            "Lade Version {0} herunter...",
+            "Downloading version {0}..."),
+        ["Update.Failed.Body"] = (
+            "Update fehlgeschlagen:\n{0}\n\n" +
+            "Die bisherige Version läuft unverändert weiter.",
+            "Update failed:\n{0}\n\n" +
+            "The current version keeps running unchanged."),
+        ["Balloon.UpdateInstalling.Body"] = (
+            "Version {0} wird installiert – PulseMQTT startet gleich neu.",
+            "Installing version {0} – PulseMQTT will restart shortly."),
+
         // ── Einstellungen-Dialog ────────────────────────────────────────────
         ["Settings.Title"] = ("PulseMQTT – Einstellungen", "PulseMQTT – Settings"),
         ["Settings.UseMqtt"] = ("MQTT senden:", "Send via MQTT:"),
@@ -135,6 +163,7 @@ public static class Localization
             "The port must match the data source selected on the device (web portal: hardware data source)."),
         ["Settings.Interval"] = ("Update-Intervall (Sek.):", "Update interval (sec.):"),
         ["Settings.AutoStart"] = ("Mit Windows starten:", "Start with Windows:"),
+        ["Settings.AutoUpdate"] = ("Automatische Updates:", "Automatic updates:"),
         ["Settings.Language"] = ("Sprache:", "Language:"),
         ["Settings.Hint"] = (
             "Topic muss mit der Firmware-Konfiguration übereinstimmen.",

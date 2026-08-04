@@ -18,6 +18,7 @@ public sealed class SettingsForm : Form
     private readonly ComboBox      _serialModeInput;
     private readonly NumericUpDown _intervalInput;
     private readonly CheckBox      _autoStartInput;
+    private readonly CheckBox      _autoUpdateInput;
     private readonly ComboBox      _languageInput;
 
     public AppSettings Result { get; private set; }
@@ -36,7 +37,7 @@ public sealed class SettingsForm : Form
         AutoScaleMode   = AutoScaleMode.Dpi;
         ClientSize      = new Size(460, 255);
 
-        const int rowCount = 11;
+        const int rowCount = 12;
         var layout = new TableLayoutPanel
         {
             Left = 12, Top = 12, Width = 436,
@@ -116,7 +117,11 @@ public sealed class SettingsForm : Form
         _autoStartInput = new CheckBox { Checked = current.StartWithWindows };
         layout.Controls.Add(_autoStartInput, 1, 9);
 
-        layout.Controls.Add(MkLabel(Localization.T("Settings.Language")), 0, 10);
+        layout.Controls.Add(MkLabel(Localization.T("Settings.AutoUpdate")), 0, 10);
+        _autoUpdateInput = new CheckBox { Checked = current.AutoUpdate };
+        layout.Controls.Add(_autoUpdateInput, 1, 10);
+
+        layout.Controls.Add(MkLabel(Localization.T("Settings.Language")), 0, 11);
         _languageInput = new ComboBox { Width = 185, DropDownStyle = ComboBoxStyle.DropDownList };
         _languageInput.Items.AddRange(
         [
@@ -130,7 +135,7 @@ public sealed class SettingsForm : Form
             "en" => 2,
             _ => 0
         };
-        layout.Controls.Add(_languageInput, 1, 10);
+        layout.Controls.Add(_languageInput, 1, 11);
 
         Controls.Add(layout);
 
@@ -172,6 +177,7 @@ public sealed class SettingsForm : Form
                 SerialMode            = ((SerialModeItem)_serialModeInput.SelectedItem!).Mode,
                 UpdateIntervalSeconds = (double)_intervalInput.Value,
                 StartWithWindows      = _autoStartInput.Checked,
+                AutoUpdate            = _autoUpdateInput.Checked,
                 Language              = ((LanguageItem)_languageInput.SelectedItem!).Code,
                 EnabledSensors        = current.EnabledSensors  // Sensor-Wahl bleibt erhalten
             };
