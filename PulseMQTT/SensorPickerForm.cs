@@ -143,6 +143,7 @@ public sealed class SensorPickerForm : Form
         // Sensoren sortiert nach Kategorie → Typ → Name
         var sorted = _sensors
             .OrderBy(s => s.HardwareCategory)
+            .ThenBy(s => s.HardwareName)
             .ThenBy(s => s.SensorType.ToString())
             .ThenBy(s => s.SensorName)
             .ToList();
@@ -159,7 +160,7 @@ public sealed class SensorPickerForm : Form
                 ? $"{sensor.CurrentValue.Value:0.#} {sensor.Unit}"
                 : "–";
 
-            var idx = _grid.Rows.Add(enabled, sensor.HardwareCategory,
+            var idx = _grid.Rows.Add(enabled, sensor.HardwareLabel,
                 sensor.TypeLabel, sensor.SensorName, mqttKey, valueStr);
 
             _grid.Rows[idx].Tag = sensor.Identifier;
