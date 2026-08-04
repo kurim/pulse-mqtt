@@ -14,10 +14,12 @@ namespace PulseMQTT;
 public sealed class SensorPickerForm : Form
 {
     private readonly List<AvailableSensor> _sensors;
+    private readonly Dictionary<string, AvailableSensor> _sensorsById;
     private readonly List<SensorEntry> _existingEntries;
     private readonly DataGridView _grid;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly Func<Dictionary<string, float>> _getLiveValues;
+    private readonly Font _boldFont;
 
     // Spalten-Indizes
     private const int ColEnabled  = 0;
@@ -37,6 +39,11 @@ public sealed class SensorPickerForm : Form
         _sensors        = sensors;
         _existingEntries = existingEntries;
         _getLiveValues  = getLiveValues;
+
+        // Lookup-Tabelle statt wiederholter List-Scans (Live-Refresh alle 2 s)
+        _sensorsById = new Dictionary<string, AvailableSensor>(StringComparer.Ordinal);
+        foreach (var s in sensors)
+            _sensorsById.TryAdd(s.Identifier, s);
 
         Text            = Localization.T("Sensors.Title");
         Icon            = AppIcon.Load();
@@ -104,6 +111,10 @@ public sealed class SensorPickerForm : Form
 
         _grid.Columns[ColMqttKey].DefaultCellStyle.BackColor = Color.FromArgb(255, 255, 230);
 
+        // Ein gemeinsames Font-Objekt für alle hervorgehobenen Zeilen –
+        // vorher wurde pro Zeile ein neues (nie freigegebenes) GDI-Handle erzeugt.
+        _boldFont = new Font(_grid.Font, FontStyle.Bold);
+
         layout.Controls.Add(_grid, 0, 1);
         PopulateGrid();
 
@@ -133,7 +144,12 @@ public sealed class SensorPickerForm : Form
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 2000 };
         _refreshTimer.Tick += (_, _) => RefreshValues();
         _refreshTimer.Start();
-        FormClosed += (_, _) => _refreshTimer.Stop();
+        FormClosed += (_, _) =>
+        {
+            _refreshTimer.Stop();
+            _refreshTimer.Dispose();
+            _boldFont.Dispose();
+        };
     }
 
     private void PopulateGrid()
@@ -168,8 +184,7 @@ public sealed class SensorPickerForm : Form
             // Vorauswahl (Standardwerte) hell hervorheben wenn noch keine Config vorhanden
             if (enabled)
             {
-                _grid.Rows[idx].DefaultCellStyle.Font =
-                    new Font(_grid.Font, FontStyle.Bold);
+                _grid.Rows[idx].DefaultCellStyle.Font = _boldFont;
             }
         }
     }
@@ -187,7 +202,7 @@ public sealed class SensorPickerForm : Form
             if (def is not null)
             {
                 row.Cells[ColMqttKey].Value = def.MqttKey;
-                row.DefaultCellStyle.Font = new Font(_grid.Font, FontStyle.Bold);
+                row.DefaultCellStyle.Font = _boldFont;
             }
             else
             {
@@ -205,8 +220,8 @@ public sealed class SensorPickerForm : Form
             foreach (DataGridViewRow row in _grid.Rows)
             {
                 var id = (string?)row.Tag ?? "";
-                var sensor = _sensors.FirstOrDefault(s => s.Identifier == id);
-                if (sensor is null) continue;
+                if (!_sensorsById.TryGetValue(id, out var sensor))
+                    continue;
 
                 if (values.TryGetValue(id, out var val))
                     row.Cells[ColValue].Value = $"{val:0.#} {sensor.Unit}";
@@ -233,7 +248,7 @@ public sealed class SensorPickerForm : Form
             {
                 MessageBox.Show(
                     Localization.T("Sensors.MissingKey.Body",
-                        _sensors.FirstOrDefault(s => s.Identifier == id)?.SensorName ?? ""),
+                        _sensorsById.TryGetValue(id, out var missing) ? missing.SensorName : ""),
                     Localization.T("Sensors.MissingKey.Title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.None;
                 return;

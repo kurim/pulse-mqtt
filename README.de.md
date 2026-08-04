@@ -119,7 +119,7 @@ Bleiben Benutzername und Passwort leer, akzeptiert der Broker anonyme Verbindung
 
 "MQTT senden" und "USB/Seriell senden" sind unabhängig voneinander schaltbar – beide Wege können gleichzeitig aktiv sein. Bei USB/Seriell muss der gewählte COM-Port zur im ESP32-Webportal eingestellten Hardwaredaten-Quelle passen.
 
-Gespeichert unter `%AppData%\PulseMQTT\settings.json`.
+Gespeichert unter `%AppData%\PulseMQTT\settings.json`. Das MQTT-Passwort wird dabei mit der Windows-Datenschutz-API (DPAPI) verschlüsselt und ist an das angemeldete Benutzerkonto gebunden; ältere Konfigurationen mit Klartext-Passwort werden beim nächsten Speichern automatisch migriert.
 
 ---
 

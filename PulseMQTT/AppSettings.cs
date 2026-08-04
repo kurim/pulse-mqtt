@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace PulseMQTT;
 
@@ -17,7 +21,30 @@ public sealed class AppSettings
     /// Authentifizierung, jeder Client darf sich verbinden.
     /// </summary>
     public string MqttUsername { get; set; } = "";
+
+    /// <summary>
+    /// Klartext-Passwort zur Laufzeit. Wird NICHT direkt gespeichert –
+    /// auf der Platte liegt nur die DPAPI-verschlüsselte Form
+    /// (<see cref="MqttPasswordProtected"/>).
+    /// </summary>
+    [JsonIgnore]
     public string MqttPassword { get; set; } = "";
+
+    /// <summary>
+    /// DPAPI-verschlüsseltes Passwort (Base64, an das Windows-Benutzerkonto
+    /// gebunden). Nur für die Persistenz gedacht.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MqttPasswordProtected { get; set; }
+
+    /// <summary>
+    /// Liest ältere settings.json ein, in denen das Passwort noch im
+    /// Klartext unter "MqttPassword" stand. Wird beim nächsten Speichern
+    /// automatisch in die verschlüsselte Form migriert.
+    /// </summary>
+    [JsonPropertyName("MqttPassword")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyMqttPassword { get; set; }
 
     /// <summary>
     /// Ob die Hardware-Daten über den eingebetteten MQTT-Broker gesendet werden.
@@ -57,6 +84,12 @@ public sealed class AppSettings
 
     // ── Persistenz ────────────────────────────────────────────────────────────
 
+    private static readonly JsonSerializerOptions LoadOptions =
+        new() { PropertyNameCaseInsensitive = true };
+
+    private static readonly JsonSerializerOptions SaveOptions =
+        new() { WriteIndented = true };
+
     private static string ConfigDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PulseMQTT");
 
@@ -69,9 +102,12 @@ public sealed class AppSettings
             if (File.Exists(ConfigPath))
             {
                 var json = File.ReadAllText(ConfigPath);
-                var loaded = JsonSerializer.Deserialize<AppSettings>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (loaded is not null) return loaded;
+                var loaded = JsonSerializer.Deserialize<AppSettings>(json, LoadOptions);
+                if (loaded is not null)
+                {
+                    loaded.RestorePassword();
+                    return loaded;
+                }
             }
         }
         catch { /* beschädigt → Standardwerte */ }
@@ -80,14 +116,80 @@ public sealed class AppSettings
 
     public void Save()
     {
+        MqttPasswordProtected = ProtectPassword(MqttPassword);
+        LegacyMqttPassword = null; // Klartext nie (wieder) auf die Platte schreiben
+
         Directory.CreateDirectory(ConfigDirectory);
-        File.WriteAllText(ConfigPath,
-            JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(ConfigPath, JsonSerializer.Serialize(this, SaveOptions));
     }
 
-    public AppSettings Clone()
+    public AppSettings Clone() => new()
     {
-        var json = JsonSerializer.Serialize(this);
-        return JsonSerializer.Deserialize<AppSettings>(json)!;
+        MqttPort              = MqttPort,
+        MqttTopic             = MqttTopic,
+        UpdateIntervalSeconds = UpdateIntervalSeconds,
+        StartWithWindows      = StartWithWindows,
+        MqttUsername          = MqttUsername,
+        MqttPassword          = MqttPassword,
+        UseMqtt               = UseMqtt,
+        UseSerial             = UseSerial,
+        SerialPortName        = SerialPortName,
+        SerialMode            = SerialMode,
+        Language              = Language,
+        EnabledSensors        = EnabledSensors
+            .Select(e => new SensorEntry
+                { Identifier = e.Identifier, MqttKey = e.MqttKey, IsEnabled = e.IsEnabled })
+            .ToList()
+    };
+
+    // ── Passwort-Schutz (Windows DPAPI, an den angemeldeten Benutzer gebunden) ─
+
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("PulseMQTT.MqttPassword.v1");
+
+    private void RestorePassword()
+    {
+        if (!string.IsNullOrEmpty(MqttPasswordProtected))
+        {
+            MqttPassword = UnprotectPassword(MqttPasswordProtected);
+        }
+        else if (!string.IsNullOrEmpty(LegacyMqttPassword))
+        {
+            // Alte Klartext-Konfiguration – übernehmen, Migration erfolgt
+            // beim nächsten Save().
+            MqttPassword = LegacyMqttPassword;
+        }
+        LegacyMqttPassword = null;
+    }
+
+    private static string? ProtectPassword(string plain)
+    {
+        if (string.IsNullOrEmpty(plain)) return null;
+        try
+        {
+            var protectedBytes = ProtectedData.Protect(
+                Encoding.UTF8.GetBytes(plain), Entropy, DataProtectionScope.CurrentUser);
+            return Convert.ToBase64String(protectedBytes);
+        }
+        catch
+        {
+            // DPAPI nicht verfügbar → Passwort lieber gar nicht speichern
+            // als im Klartext.
+            return null;
+        }
+    }
+
+    private static string UnprotectPassword(string protectedBase64)
+    {
+        try
+        {
+            var plainBytes = ProtectedData.Unprotect(
+                Convert.FromBase64String(protectedBase64), Entropy, DataProtectionScope.CurrentUser);
+            return Encoding.UTF8.GetString(plainBytes);
+        }
+        catch
+        {
+            // Anderes Benutzerkonto / beschädigter Wert → wie "kein Passwort"
+            return "";
+        }
     }
 }

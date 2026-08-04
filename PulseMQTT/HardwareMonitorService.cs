@@ -19,6 +19,15 @@ public sealed class HardwareMonitorService : IDisposable
     private readonly Computer _computer;
     private readonly UpdateVisitor _visitor = new();
 
+    // Identifier.ToString() allokiert bei jedem Aufruf einen neuen String.
+    // Beim Polling (alle 1-2 s über Jahre Laufzeit) summiert sich das zu
+    // erheblichem GC-Druck – daher werden die Strings pro Sensor gecacht.
+    private readonly Dictionary<ISensor, string> _identifierCache = new();
+
+    // Wiederverwendeter Puffer für GetValues(): vermeidet ein neues
+    // Dictionary pro Poll-Tick. Aufrufer konsumieren das Ergebnis synchron.
+    private readonly Dictionary<string, float> _valuesBuffer = new(StringComparer.Ordinal);
+
     // Hardware-Typen die standardmäßig überwacht werden
     public HardwareMonitorService()
     {
@@ -52,7 +61,7 @@ public sealed class HardwareMonitorService : IDisposable
         return result;
     }
 
-    private static void CollectFrom(IHardware hw, List<AvailableSensor> target)
+    private void CollectFrom(IHardware hw, List<AvailableSensor> target)
     {
         foreach (var sensor in hw.Sensors)
         {
@@ -66,7 +75,7 @@ public sealed class HardwareMonitorService : IDisposable
 
             target.Add(new AvailableSensor
             {
-                Identifier   = sensor.Identifier.ToString(),
+                Identifier   = GetIdentifier(sensor),
                 HardwareName = hw.Name,
                 HardwareType = hw.HardwareType,
                 SensorName   = sensor.Name,
@@ -82,26 +91,38 @@ public sealed class HardwareMonitorService : IDisposable
 
     /// <summary>
     /// Schneller Pfad für den Poll-Timer: nur Werte lesen, keine neue Liste aufbauen.
+    /// Das zurückgegebene Dictionary ist ein interner Puffer, der beim nächsten
+    /// Aufruf überschrieben wird – synchron konsumieren, nicht aufbewahren.
     /// </summary>
     public Dictionary<string, float> GetValues()
     {
         _computer.Accept(_visitor);
-        var dict = new Dictionary<string, float>(StringComparer.Ordinal);
+        _valuesBuffer.Clear();
 
         foreach (var hw in _computer.Hardware)
-            CollectValues(hw, dict);
+            CollectValues(hw, _valuesBuffer);
 
-        return dict;
+        return _valuesBuffer;
     }
 
-    private static void CollectValues(IHardware hw, Dictionary<string, float> dict)
+    private void CollectValues(IHardware hw, Dictionary<string, float> dict)
     {
         foreach (var sensor in hw.Sensors)
             if (sensor.Value.HasValue)
-                dict[sensor.Identifier.ToString()] = sensor.Value.Value;
+                dict[GetIdentifier(sensor)] = sensor.Value.Value;
 
         foreach (var sub in hw.SubHardware)
             CollectValues(sub, dict);
+    }
+
+    private string GetIdentifier(ISensor sensor)
+    {
+        if (!_identifierCache.TryGetValue(sensor, out var id))
+        {
+            id = sensor.Identifier.ToString();
+            _identifierCache[sensor] = id;
+        }
+        return id;
     }
 
     public void Dispose() => _computer.Close();

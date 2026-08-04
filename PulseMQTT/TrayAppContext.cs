@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -15,14 +16,17 @@ public sealed class TrayAppContext : ApplicationContext
 {
     private readonly NotifyIcon _trayIcon;
     private readonly System.Windows.Forms.Timer _pollTimer;
+    private readonly System.Windows.Forms.Timer _memoryTrimTimer;
     private readonly MqttBrokerService _broker = new();
     private readonly SerialBridgeService _serial = new();
     private readonly HardwareMonitorService _hardware = new();
+    private readonly Dictionary<string, float> _payloadBuffer = new(StringComparer.Ordinal);
     private AppSettings _settings;
     private bool _accessWarningShown;
     private bool _isPublishing;
     private DateTime _nextSerialRetryUtc = DateTime.MinValue;
     private static readonly TimeSpan SerialRetryInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MemoryTrimInterval = TimeSpan.FromMinutes(5);
 
     private static readonly bool IsAdmin =
         new WindowsPrincipal(WindowsIdentity.GetCurrent())
@@ -44,6 +48,15 @@ public sealed class TrayAppContext : ApplicationContext
 
         _pollTimer = new System.Windows.Forms.Timer();
         _pollTimer.Tick += async (_, _) => await PublishSnapshotAsync();
+
+        // Regelmäßig den Heap kompaktieren und das Working Set an das OS
+        // zurückgeben. Ohne diesen Trim behält die CLR einmal committeten
+        // Speicher (JIT-Warmup, Sensor-Discovery, Dialoge) dauerhaft –
+        // das ist der Hauptgrund für 150+ MB im Task-Manager.
+        _memoryTrimTimer = new System.Windows.Forms.Timer
+            { Interval = (int)MemoryTrimInterval.TotalMilliseconds };
+        _memoryTrimTimer.Tick += (_, _) => TrimMemory();
+        _memoryTrimTimer.Start();
 
         _ = StartupAsync();
     }
@@ -113,7 +126,13 @@ public sealed class TrayAppContext : ApplicationContext
     {
         _settings = settings;
         Localization.LanguageCode = settings.Language;
+
+        // Altes Menü freigeben – ContextMenuStrip hält Win32-Handles, die
+        // sonst bei jedem Speichern der Einstellungen liegenbleiben.
+        var oldMenu = _trayIcon.ContextMenuStrip;
         _trayIcon.ContextMenuStrip = BuildContextMenu();
+        oldMenu?.Dispose();
+
         _pollTimer.Stop();
         _pollTimer.Interval = Math.Max(250, (int)(settings.UpdateIntervalSeconds * 1000));
 
@@ -165,29 +184,36 @@ public sealed class TrayAppContext : ApplicationContext
         _isPublishing = true;
         try
         {
-            var values  = _hardware.GetValues();
-            var enabled = _settings.EnabledSensors.Where(e => e.IsEnabled).ToList();
+            var values = _hardware.GetValues();
 
-            if (!_accessWarningShown && enabled.Count > 0)
+            // Payload dynamisch aus gewählten Sensoren aufbauen
+            // (wiederverwendeter Puffer statt neuem Dictionary pro Tick)
+            var payload = _payloadBuffer;
+            payload.Clear();
+            var enabledCount = 0;
+            var hasData = false;
+
+            foreach (var entry in _settings.EnabledSensors)
             {
-                var hasData = enabled.Any(e =>
-                    values.TryGetValue(e.Identifier, out var v) && v > 0);
+                if (!entry.IsEnabled) continue;
+                enabledCount++;
 
-                if (!hasData && !IsAdmin && PawnIoHelper.IsInstalled())
+                if (values.TryGetValue(entry.Identifier, out var val))
                 {
-                    _accessWarningShown = true;
-                    _trayIcon.ShowBalloonTip(10_000,
-                        Localization.T("Balloon.RestrictedAccess.Title"),
-                        Localization.T("Balloon.RestrictedAccess.Body"),
-                        ToolTipIcon.Warning);
+                    payload[entry.MqttKey] = MathF.Round(val, 1);
+                    if (val > 0) hasData = true;
                 }
             }
 
-            // Payload dynamisch aus gewählten Sensoren aufbauen
-            var payload = new Dictionary<string, float>();
-            foreach (var entry in enabled)
-                if (values.TryGetValue(entry.Identifier, out var val))
-                    payload[entry.MqttKey] = MathF.Round(val, 1);
+            if (!_accessWarningShown && enabledCount > 0 &&
+                !hasData && !IsAdmin && PawnIoHelper.IsInstalled())
+            {
+                _accessWarningShown = true;
+                _trayIcon.ShowBalloonTip(10_000,
+                    Localization.T("Balloon.RestrictedAccess.Title"),
+                    Localization.T("Balloon.RestrictedAccess.Body"),
+                    ToolTipIcon.Warning);
+            }
 
             var json = JsonSerializer.Serialize(payload);
 
@@ -313,12 +339,43 @@ public sealed class TrayAppContext : ApplicationContext
     private async void OnExitClicked(object? sender, EventArgs e)
     {
         _pollTimer.Stop();
+        _memoryTrimTimer.Stop();
         _trayIcon.Visible = false;
         await _broker.StopAsync();
         await _serial.CloseAsync();
         _hardware.Dispose();
+        _trayIcon.ContextMenuStrip?.Dispose();
+        _trayIcon.Dispose();
+        _pollTimer.Dispose();
+        _memoryTrimTimer.Dispose();
         Application.Exit();
     }
+
+    // ── Speicher-Trim ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Kompaktiert den verwalteten Heap und gibt nicht mehr benötigte Seiten
+    /// des Working Sets an das Betriebssystem zurück. Für eine Tray-App, die
+    /// 99 % der Zeit idle ist, ist die kurze GC-Pause alle paar Minuten
+    /// unkritisch – der Speicherverbrauch sinkt dafür deutlich.
+    /// </summary>
+    private void TrimMemory()
+    {
+        if (_isPublishing) return; // nicht mitten in einem Publish-Vorgang
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            SetProcessWorkingSetSize(process.Handle, -1, -1);
+        }
+        catch { /* rein kosmetisch – ohne Trim läuft die App normal weiter */ }
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetProcessWorkingSetSize(IntPtr process, nint minSize, nint maxSize);
 
     // ── Autostart ────────────────────────────────────────────────────────────
 
