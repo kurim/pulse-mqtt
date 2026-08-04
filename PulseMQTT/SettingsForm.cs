@@ -88,6 +88,7 @@ public sealed class SettingsForm : Form
         };
         var refreshTip = new ToolTip();
         refreshTip.SetToolTip(_serialRefreshButton, Localization.T("Settings.SerialPort.Refresh"));
+        FormClosed += (_, _) => refreshTip.Dispose();
         _serialRefreshButton.Click += (_, _) => RefreshSerialPorts(current.SerialPortName);
         serialPanel.Controls.Add(_serialPortInput);
         serialPanel.Controls.Add(_serialRefreshButton);

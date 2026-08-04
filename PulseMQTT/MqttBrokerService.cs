@@ -1,4 +1,6 @@
 using System;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using MQTTnet;
@@ -48,7 +50,10 @@ public sealed class MqttBrokerService
         {
             _server.ValidatingConnectionAsync += args =>
             {
-                if (args.UserName != username || args.Password != password)
+                // Zeitkonstanter Vergleich, damit sich Zugangsdaten nicht
+                // Zeichen für Zeichen über Antwortzeiten erraten lassen.
+                if (!FixedTimeEquals(args.UserName, username) ||
+                    !FixedTimeEquals(args.Password, password))
                 {
                     args.ReasonCode = MqttConnectReasonCode.BadUserNameOrPassword;
                 }
@@ -94,5 +99,12 @@ public sealed class MqttBrokerService
 
         await _server.InjectApplicationMessage(
             new InjectedMqttApplicationMessage(message) { SenderClientId = "PulseMQTT" });
+    }
+
+    private static bool FixedTimeEquals(string? a, string? b)
+    {
+        var bytesA = Encoding.UTF8.GetBytes(a ?? "");
+        var bytesB = Encoding.UTF8.GetBytes(b ?? "");
+        return CryptographicOperations.FixedTimeEquals(bytesA, bytesB);
     }
 }

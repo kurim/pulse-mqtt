@@ -92,13 +92,10 @@ public static class PawnIoHelper
 
     private static async Task<bool> DownloadAndRunInstallerAsync(IWin32Window? owner)
     {
-        var tempPath = Path.Combine(Path.GetTempPath(), "PawnIO.Setup.msi");
-
-        // Alten Download ggf. entfernen
-        if (File.Exists(tempPath))
-        {
-            try { File.Delete(tempPath); } catch { }
-        }
+        // Zufälliger Dateiname + exklusives Anlegen (CreateNew): verhindert,
+        // dass ein anderer Prozess die Datei unter einem vorhersagbaren Pfad
+        // vorab platziert oder zwischen Download und msiexec-Start austauscht.
+        var tempPath = Path.Combine(Path.GetTempPath(), $"PawnIO.Setup.{Guid.NewGuid():N}.msi");
 
         // Fortschritts-Ballon während des Downloads
         // (NotifyIcon ist zu diesem Zeitpunkt noch nicht übergeben, daher einfacher Dialog)
@@ -117,12 +114,13 @@ public static class PawnIoHelper
             response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync();
-            await using var file = File.Create(tempPath);
+            await using var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             await stream.CopyToAsync(file);
         }
         catch (Exception ex)
         {
             progress.Close();
+            TryDelete(tempPath);
             MessageBox.Show(
                 owner,
                 Localization.T("PawnIo.DownloadFailed.Body", ex.Message),
@@ -134,8 +132,18 @@ public static class PawnIoHelper
 
         progress.Close();
 
-        if (!File.Exists(tempPath))
+        // Plausibilitätsprüfung vor dem Ausführen: MSI-Dateien sind
+        // OLE-Compound-Files mit fester Magic-Byte-Signatur. Fängt u.a.
+        // HTML-Fehlerseiten ab, die als Download durchgerutscht sind.
+        if (!IsMsiFile(tempPath))
         {
+            TryDelete(tempPath);
+            MessageBox.Show(
+                owner,
+                Localization.T("PawnIo.DownloadFailed.Body", "Invalid installer file"),
+                Localization.T("PawnIo.DownloadFailed.Title"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
             return false;
         }
 
@@ -170,6 +178,27 @@ public static class PawnIoHelper
                 MessageBoxIcon.Error);
             return false;
         }
+    }
+
+    /// <summary>OLE-Compound-File-Signatur (D0 CF 11 E0 A1 B1 1A E1) prüfen.</summary>
+    private static bool IsMsiFile(string path)
+    {
+        ReadOnlySpan<byte> magic = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+        try
+        {
+            using var fs = File.OpenRead(path);
+            Span<byte> header = stackalloc byte[8];
+            return fs.Read(header) == header.Length && header.SequenceEqual(magic);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch { /* Temp-Datei, wird ggf. vom OS geräumt */ }
     }
 }
 

@@ -15,7 +15,25 @@
     <Version>1.0.0</Version>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
+
+    <!--
+      GC auf geringen Speicherverbrauch statt Durchsatz ausrichten:
+      Workstation-GC ohne Background-Thread reicht für eine Tray-App
+      völlig aus und spart dauerhaft committeten Heap-Speicher.
+    -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <RetainVMGarbageCollection>false</RetainVMGarbageCollection>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      ConserveMemory (0-9): höhere Werte lassen den GC Segmente aggressiver
+      zurückgeben und den Heap kleiner halten – auf Kosten etwas häufigerer
+      Collections, was hier (Poll alle 1-2 s, sonst idle) egal ist.
+    -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+  </ItemGroup>
 
   <!--
     Trimming-Konfiguration (nur aktiv wenn PublishTrimmed=true).
@@ -58,6 +76,8 @@
     <PackageReference Include="MQTTnet.Server" Version="5.*" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.*" />
+    <!-- DPAPI-Verschlüsselung des MQTT-Passworts in settings.json -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.*" />
     <!-- Kein eigener PackageReference nötig: LibreHardwareMonitorLib bringt bereits
          eine neuere System.IO.Ports-Version transitiv mit; ein Pin hier würde sie
          nur downgraden (NU1605). -->
