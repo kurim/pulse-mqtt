@@ -54,4 +54,15 @@ public sealed class AvailableSensor
         HardwareType.Network     => "Netzwerk",
         _                        => HardwareType.ToString()
     };
+
+    /// <summary>
+    /// Anzeigename für die Hardware-Spalte. Bei Geräten, die mehrfach vorkommen
+    /// können (Speicher, Netzwerk), wird der konkrete Gerätename ergänzt,
+    /// damit z. B. mehrere SSDs unterscheidbar sind (Modell/Laufwerksbuchstabe).
+    /// </summary>
+    public string HardwareLabel => HardwareType switch
+    {
+        HardwareType.Storage or HardwareType.Network => $"{HardwareCategory} – {HardwareName}",
+        _ => HardwareCategory
+    };
 }
