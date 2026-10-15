@@ -453,7 +453,7 @@ public sealed class TrayAppContext : ApplicationContext
                 }
 
                 var stagedExe = await UpdateService.DownloadAsync(update);
-                UpdateService.ApplyAndRestart(stagedExe);
+                UpdateService.Apply(stagedExe);
             }
             catch (Exception ex)
             {
@@ -472,9 +472,24 @@ public sealed class TrayAppContext : ApplicationContext
                 progress?.Dispose();
             }
 
-            // Neue EXE ist an Ort und Stelle, der neue Prozess startet bereits
-            // und wartet auf den Single-Instance-Mutex → sauber beenden.
-            await ShutdownAsync();
+            // Neue EXE ist an Ort und Stelle. Erst sauber herunterfahren
+            // (Broker-Port, COM-Port, Treiber freigeben), dann den
+            // Single-Instance-Mutex abgeben und erst danach den neuen Prozess
+            // starten – so findet er weder den Mutex noch den Port belegt.
+            // Ein hängendes Herunterfahren wird nach 10 s abgebrochen.
+            try { await ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch { /* Neustart trotzdem fortsetzen */ }
+
+            Program.ReleaseSingleInstance();
+            try
+            {
+                UpdateService.StartUpdatedInstance();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("Update.Failed.Body", ex.Message),
+                    Localization.T("Update.Title"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
             Application.Exit();
         }
         finally

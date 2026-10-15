@@ -6,6 +6,9 @@ namespace PulseMQTT;
 
 internal static class Program
 {
+    private static Mutex? _singleInstance;
+    private static bool _owned;
+
     [STAThread]
     private static void Main(string[] args)
     {
@@ -13,7 +16,7 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        using var mutex = new Mutex(
+        _singleInstance = new Mutex(
             initiallyOwned: false,
             name: "PulseMQTT-SingleInstance-9F3B1C2A");
 
@@ -21,10 +24,11 @@ internal static class Program
         // alte Prozess noch beendet – dann kurz auf die Mutex-Freigabe warten
         // statt sofort "läuft bereits" zu melden.
         var waitTime = args.Contains(UpdateService.RestartArgument)
-            ? TimeSpan.FromSeconds(15)
+            ? TimeSpan.FromSeconds(30)
             : TimeSpan.Zero;
 
-        if (!TryAcquire(mutex, waitTime))
+        _owned = TryAcquire(_singleInstance, waitTime);
+        if (!_owned)
         {
             Localization.LanguageCode = AppSettings.Load().Language;
             MessageBox.Show(
@@ -39,8 +43,22 @@ internal static class Program
         }
         finally
         {
-            mutex.ReleaseMutex();
+            ReleaseSingleInstance();
+            _singleInstance?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Gibt den Single-Instance-Mutex frei. Das Selbst-Update ruft das auf,
+    /// bevor es den neuen Prozess startet – sonst hängt die Freigabe daran,
+    /// dass der alte Prozess vollständig aus Application.Run zurückkehrt.
+    /// Muss auf dem Thread laufen, der den Mutex erworben hat (UI-Thread).
+    /// </summary>
+    internal static void ReleaseSingleInstance()
+    {
+        if (!_owned) return;
+        _owned = false;
+        try { _singleInstance?.ReleaseMutex(); } catch (ApplicationException) { }
     }
 
     private static bool TryAcquire(Mutex mutex, TimeSpan timeout)
