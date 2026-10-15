@@ -164,6 +164,7 @@ public static class Localization
         ["Settings.Interval"] = ("Update-Intervall (Sek.):", "Update interval (sec.):"),
         ["Settings.AutoStart"] = ("Mit Windows starten:", "Start with Windows:"),
         ["Settings.AutoUpdate"] = ("Automatische Updates:", "Automatic updates:"),
+        ["Settings.StorageSensors"] = ("Laufwerks-Sensoren:", "Drive sensors:"),
         ["Settings.Language"] = ("Sprache:", "Language:"),
         ["Settings.Hint"] = (
             "Topic muss mit der Firmware-Konfiguration übereinstimmen.",

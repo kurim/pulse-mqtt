@@ -20,7 +20,7 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _updateTimer;
     private readonly MqttBrokerService _broker = new();
     private readonly SerialBridgeService _serial = new();
-    private readonly HardwareMonitorService _hardware = new();
+    private readonly HardwareMonitorService _hardware;
     private readonly Dictionary<string, float> _payloadBuffer = new(StringComparer.Ordinal);
     private AppSettings _settings;
     private bool _accessWarningShown;
@@ -39,6 +39,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         _settings = AppSettings.Load();
         Localization.LanguageCode = _settings.Language;
+        _hardware = new HardwareMonitorService(_settings.EnableStorageSensors);
 
         _trayIcon = new NotifyIcon
         {
@@ -152,6 +153,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         _settings = settings;
         Localization.LanguageCode = settings.Language;
+        _hardware.StorageEnabled = settings.EnableStorageSensors;
 
         // Altes Menü freigeben – ContextMenuStrip hält Win32-Handles, die
         // sonst bei jedem Speichern der Einstellungen liegenbleiben.

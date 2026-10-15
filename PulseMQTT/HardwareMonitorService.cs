@@ -29,7 +29,7 @@ public sealed class HardwareMonitorService : IDisposable
     private readonly Dictionary<string, float> _valuesBuffer = new(StringComparer.Ordinal);
 
     // Hardware-Typen die standardmäßig überwacht werden
-    public HardwareMonitorService()
+    public HardwareMonitorService(bool enableStorage = true)
     {
         _computer = new Computer
         {
@@ -37,13 +37,28 @@ public sealed class HardwareMonitorService : IDisposable
             IsGpuEnabled         = true,
             IsMemoryEnabled      = true,
             IsMotherboardEnabled = true,
-            IsStorageEnabled     = true,
+            IsStorageEnabled     = enableStorage,
             IsNetworkEnabled     = false,
             IsControllerEnabled  = false,
             IsBatteryEnabled     = false,
             IsPsuEnabled         = false
         };
         _computer.Open();
+    }
+
+    /// <summary>
+    /// Schaltet die Laufwerks-Abfrage zur Laufzeit ein/aus. Aus = LHM greift
+    /// nicht mehr auf die Laufwerke zu (relevant für USB-Speicher).
+    /// </summary>
+    public bool StorageEnabled
+    {
+        get => _computer.IsStorageEnabled;
+        set
+        {
+            if (_computer.IsStorageEnabled == value) return;
+            _computer.IsStorageEnabled = value;
+            _identifierCache.Clear();
+        }
     }
 
     /// <summary>

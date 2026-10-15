@@ -84,6 +84,14 @@ public sealed class AppSettings
     public bool AutoUpdate { get; set; } = true;
 
     /// <summary>
+    /// Ob LibreHardwareMonitor auch Laufwerke (Temperatur, Auslastung, SMART)
+    /// abfragt. Die Abfrage läuft bei jedem Poll direkt gegen die Laufwerke
+    /// und kann USB-Massenspeicher (z. B. SD-Kartenleser) beim Kopieren
+    /// stören. Wer keine Laufwerks-Sensoren sendet, schaltet sie ab.
+    /// </summary>
+    public bool EnableStorageSensors { get; set; } = true;
+
+    /// <summary>
     /// Vom Benutzer ausgewählte Sensoren. Leer = noch nicht konfiguriert,
     /// beim nächsten Start werden Standardwerte vorausgewählt.
     /// </summary>
@@ -144,6 +152,7 @@ public sealed class AppSettings
         SerialMode            = SerialMode,
         Language              = Language,
         AutoUpdate            = AutoUpdate,
+        EnableStorageSensors  = EnableStorageSensors,
         EnabledSensors        = EnabledSensors
             .Select(e => new SensorEntry
                 { Identifier = e.Identifier, MqttKey = e.MqttKey, IsEnabled = e.IsEnabled })
