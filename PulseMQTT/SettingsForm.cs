@@ -19,6 +19,7 @@ public sealed class SettingsForm : Form
     private readonly NumericUpDown _intervalInput;
     private readonly CheckBox      _autoStartInput;
     private readonly CheckBox      _autoUpdateInput;
+    private readonly CheckBox      _storageSensorsInput;
     private readonly ComboBox      _languageInput;
 
     public AppSettings Result { get; private set; }
@@ -37,7 +38,7 @@ public sealed class SettingsForm : Form
         AutoScaleMode   = AutoScaleMode.Dpi;
         ClientSize      = new Size(460, 255);
 
-        const int rowCount = 12;
+        const int rowCount = 13;
         var layout = new TableLayoutPanel
         {
             Left = 12, Top = 12, Width = 436,
@@ -137,6 +138,10 @@ public sealed class SettingsForm : Form
         };
         layout.Controls.Add(_languageInput, 1, 11);
 
+        layout.Controls.Add(MkLabel(Localization.T("Settings.StorageSensors")), 0, 12);
+        _storageSensorsInput = new CheckBox { Checked = current.EnableStorageSensors };
+        layout.Controls.Add(_storageSensorsInput, 1, 12);
+
         Controls.Add(layout);
 
         RefreshSerialPorts(current.SerialPortName);
@@ -178,6 +183,7 @@ public sealed class SettingsForm : Form
                 UpdateIntervalSeconds = (double)_intervalInput.Value,
                 StartWithWindows      = _autoStartInput.Checked,
                 AutoUpdate            = _autoUpdateInput.Checked,
+                EnableStorageSensors  = _storageSensorsInput.Checked,
                 Language              = ((LanguageItem)_languageInput.SelectedItem!).Code,
                 EnabledSensors        = current.EnabledSensors  // Sensor-Wahl bleibt erhalten
             };
