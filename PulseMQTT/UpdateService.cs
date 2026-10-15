@@ -23,7 +23,8 @@ public sealed record UpdateInfo(string TagName, string AssetName, string Downloa
 ///
 ///   1. PulseMQTT.exe  →  PulseMQTT.exe.old   (laufende Datei wegbenennen)
 ///   2. neue EXE       →  PulseMQTT.exe       (an den alten Platz schieben)
-///   3. neuen Prozess starten, alter Prozess beendet sich,
+///   3. alter Prozess fährt herunter und gibt den Single-Instance-Mutex
+///      frei, startet dann den neuen Prozess und beendet sich;
 ///      der neue räumt die .old-Datei beim Start weg.
 /// </summary>
 public static class UpdateService
@@ -153,12 +154,12 @@ public static class UpdateService
     }
 
     /// <summary>
-    /// Tauscht die laufende EXE gegen die neue aus und startet den neuen
-    /// Prozess. Der Aufrufer muss sich danach selbst beenden (Broker/Ports
-    /// schließen, Application.Exit). Bei einem Fehler wird die alte EXE
+    /// Tauscht die laufende EXE gegen die neue aus (.old-Backup). Startet noch
+    /// nichts: der Aufrufer fährt erst Broker/Ports herunter und ruft dann
+    /// <see cref="StartUpdatedInstance"/>. Bei einem Fehler wird die alte EXE
     /// wiederhergestellt und die Exception weitergereicht.
     /// </summary>
-    public static void ApplyAndRestart(string stagedExePath)
+    public static void Apply(string stagedExePath)
     {
         var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
         var backupPath = exePath + ".old";
@@ -182,6 +183,16 @@ public static class UpdateService
         }
 
         try { Directory.Delete(Path.GetDirectoryName(stagedExePath)!, recursive: true); } catch { }
+    }
+
+    /// <summary>
+    /// Startet die ausgetauschte EXE. Muss nach dem Herunterfahren und nach
+    /// <c>Program.ReleaseSingleInstance()</c> aufgerufen werden, damit der
+    /// neue Prozess den Mutex sofort bekommt.
+    /// </summary>
+    public static void StartUpdatedInstance()
+    {
+        var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
 
         // Ein aus einem Admin-Prozess gestarteter Kindprozess erbt die
         // Elevation – die App startet also mit denselben Rechten wie zuvor.
