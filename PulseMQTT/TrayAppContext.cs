@@ -39,7 +39,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         _settings = AppSettings.Load();
         Localization.LanguageCode = _settings.Language;
-        _hardware = new HardwareMonitorService(_settings.EnableStorageSensors);
+        _hardware = new HardwareMonitorService(_settings.StorageSource);
 
         _trayIcon = new NotifyIcon
         {
@@ -153,7 +153,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         _settings = settings;
         Localization.LanguageCode = settings.Language;
-        _hardware.StorageEnabled = settings.EnableStorageSensors;
+        _hardware.StorageSource = settings.StorageSource;
 
         // Altes Menü freigeben – ContextMenuStrip hält Win32-Handles, die
         // sonst bei jedem Speichern der Einstellungen liegenbleiben.

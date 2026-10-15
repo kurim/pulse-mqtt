@@ -116,7 +116,7 @@ Beim allerersten Start:
 | Update-Intervall | `2,0 s` | Wie oft neue Werte gesendet werden |
 | Mit Windows starten | aus | Autostart (Registry oder Task Scheduler) |
 | Automatische Updates | an | Prüft beim Start (und danach täglich) das neueste GitHub-Release, lädt es herunter und startet PulseMQTT mit der neuen Version neu |
-| Laufwerks-Sensoren | an | LibreHardwareMonitor fragt Laufwerke ab (Temperatur, Auslastung, SMART). Abschalten, wenn keine Laufwerkswerte gesendet werden – die Abfragen können USB-Speicher wie SD-Kartenleser beim Kopieren stören |
+| Laufwerks-Sensoren | LibreHardwareMonitor | Quelle der Laufwerkswerte (Temperatur, Auslastung): *LibreHardwareMonitor*, *Windows* (nur interne SATA-/NVMe-Laufwerke, per WMI) oder *Aus*. LibreHardwareMonitor fragt die Laufwerke bei jedem Poll direkt ab und kann dabei USB-Speicher wie SD-Kartenleser beim Kopieren stören – dann *Windows* oder *Aus* wählen |
 | Sprache | Automatisch | Automatisch (folgt Windows), Deutsch oder English |
 
 Bleiben Benutzername und Passwort leer, akzeptiert der Broker anonyme Verbindungen (Standard). Werden beide gesetzt, müssen sich Clients vor dem Verbindungsaufbau authentifizieren.

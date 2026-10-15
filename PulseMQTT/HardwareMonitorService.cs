@@ -18,6 +18,8 @@ public sealed class HardwareMonitorService : IDisposable
 {
     private readonly Computer _computer;
     private readonly UpdateVisitor _visitor = new();
+    private readonly WindowsStorageService _windowsStorage = new();
+    private StorageSensorSource _storageSource;
 
     // Identifier.ToString() allokiert bei jedem Aufruf einen neuen String.
     // Beim Polling (alle 1-2 s über Jahre Laufzeit) summiert sich das zu
@@ -29,15 +31,16 @@ public sealed class HardwareMonitorService : IDisposable
     private readonly Dictionary<string, float> _valuesBuffer = new(StringComparer.Ordinal);
 
     // Hardware-Typen die standardmäßig überwacht werden
-    public HardwareMonitorService(bool enableStorage = true)
+    public HardwareMonitorService(StorageSensorSource storageSource = StorageSensorSource.Lhm)
     {
+        _storageSource = storageSource;
         _computer = new Computer
         {
             IsCpuEnabled         = true,
             IsGpuEnabled         = true,
             IsMemoryEnabled      = true,
             IsMotherboardEnabled = true,
-            IsStorageEnabled     = enableStorage,
+            IsStorageEnabled     = storageSource == StorageSensorSource.Lhm,
             IsNetworkEnabled     = false,
             IsControllerEnabled  = false,
             IsBatteryEnabled     = false,
@@ -47,16 +50,18 @@ public sealed class HardwareMonitorService : IDisposable
     }
 
     /// <summary>
-    /// Schaltet die Laufwerks-Abfrage zur Laufzeit ein/aus. Aus = LHM greift
-    /// nicht mehr auf die Laufwerke zu (relevant für USB-Speicher).
+    /// Wählt die Quelle der Laufwerks-Sensoren zur Laufzeit. Nur bei
+    /// <see cref="StorageSensorSource.Lhm"/> greift LibreHardwareMonitor auf
+    /// die Laufwerke zu (relevant für USB-Speicher).
     /// </summary>
-    public bool StorageEnabled
+    public StorageSensorSource StorageSource
     {
-        get => _computer.IsStorageEnabled;
+        get => _storageSource;
         set
         {
-            if (_computer.IsStorageEnabled == value) return;
-            _computer.IsStorageEnabled = value;
+            if (_storageSource == value) return;
+            _storageSource = value;
+            _computer.IsStorageEnabled = value == StorageSensorSource.Lhm;
             _identifierCache.Clear();
         }
     }
@@ -72,6 +77,9 @@ public sealed class HardwareMonitorService : IDisposable
 
         foreach (var hw in _computer.Hardware)
             CollectFrom(hw, result);
+
+        if (_storageSource == StorageSensorSource.Windows)
+            result.AddRange(_windowsStorage.Discover());
 
         return result;
     }
@@ -116,6 +124,9 @@ public sealed class HardwareMonitorService : IDisposable
 
         foreach (var hw in _computer.Hardware)
             CollectValues(hw, _valuesBuffer);
+
+        if (_storageSource == StorageSensorSource.Windows)
+            _windowsStorage.CollectValues(_valuesBuffer);
 
         return _valuesBuffer;
     }

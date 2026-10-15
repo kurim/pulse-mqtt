@@ -63,6 +63,8 @@
     <TrimmerRootAssembly Include="MQTTnet.Server" />
     <!-- Service-Controller für PawnIO-Erkennung -->
     <TrimmerRootAssembly Include="System.ServiceProcess.ServiceController" />
+    <!-- Laufwerks-Sensoren über WMI -->
+    <TrimmerRootAssembly Include="System.Management" />
     <!-- USB/Seriell-Ausgabe -->
     <TrimmerRootAssembly Include="System.IO.Ports" />
   </ItemGroup>
@@ -79,7 +81,8 @@
     <!-- DPAPI-Verschlüsselung des MQTT-Passworts in settings.json -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.*" />
     <!-- Kein eigener PackageReference nötig: LibreHardwareMonitorLib bringt bereits
-         eine neuere System.IO.Ports-Version transitiv mit; ein Pin hier würde sie
+         neuere Versionen von System.IO.Ports und System.Management (WMI für die
+         Windows-Laufwerks-Sensoren) transitiv mit; ein Pin hier würde sie
          nur downgraden (NU1605). -->
   </ItemGroup>
 
