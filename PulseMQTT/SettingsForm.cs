@@ -19,7 +19,7 @@ public sealed class SettingsForm : Form
     private readonly NumericUpDown _intervalInput;
     private readonly CheckBox      _autoStartInput;
     private readonly CheckBox      _autoUpdateInput;
-    private readonly CheckBox      _storageSensorsInput;
+    private readonly ComboBox      _storageSensorsInput;
     private readonly ComboBox      _languageInput;
 
     public AppSettings Result { get; private set; }
@@ -139,7 +139,14 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(_languageInput, 1, 11);
 
         layout.Controls.Add(MkLabel(Localization.T("Settings.StorageSensors")), 0, 12);
-        _storageSensorsInput = new CheckBox { Checked = current.EnableStorageSensors };
+        _storageSensorsInput = new ComboBox { Width = 185, DropDownStyle = ComboBoxStyle.DropDownList };
+        _storageSensorsInput.Items.AddRange(
+        [
+            new StorageSourceItem(StorageSensorSource.Lhm,     Localization.T("Settings.StorageSensors.Lhm")),
+            new StorageSourceItem(StorageSensorSource.Windows, Localization.T("Settings.StorageSensors.Windows")),
+            new StorageSourceItem(StorageSensorSource.Off,     Localization.T("Settings.StorageSensors.Off")),
+        ]);
+        _storageSensorsInput.SelectedIndex = (int)current.StorageSource;
         layout.Controls.Add(_storageSensorsInput, 1, 12);
 
         Controls.Add(layout);
@@ -183,7 +190,7 @@ public sealed class SettingsForm : Form
                 UpdateIntervalSeconds = (double)_intervalInput.Value,
                 StartWithWindows      = _autoStartInput.Checked,
                 AutoUpdate            = _autoUpdateInput.Checked,
-                EnableStorageSensors  = _storageSensorsInput.Checked,
+                StorageSource         = ((StorageSourceItem)_storageSensorsInput.SelectedItem!).Source,
                 Language              = ((LanguageItem)_languageInput.SelectedItem!).Code,
                 EnabledSensors        = current.EnabledSensors  // Sensor-Wahl bleibt erhalten
             };
@@ -226,6 +233,11 @@ public sealed class SettingsForm : Form
         { Text = t, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(0, 8, 8, 0) };
 
     private sealed record LanguageItem(string Code, string DisplayName)
+    {
+        public override string ToString() => DisplayName;
+    }
+
+    private sealed record StorageSourceItem(StorageSensorSource Source, string DisplayName)
     {
         public override string ToString() => DisplayName;
     }

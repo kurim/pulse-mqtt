@@ -9,6 +9,26 @@ using System.Text.Json.Serialization;
 
 namespace PulseMQTT;
 
+/// <summary>Woher die Laufwerks-Sensoren (Temperatur, Auslastung) kommen.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum StorageSensorSource
+{
+    /// <summary>
+    /// LibreHardwareMonitor – spricht die Laufwerke direkt an (SMART/NVMe),
+    /// kann dabei USB-Speicher stören.
+    /// </summary>
+    Lhm,
+
+    /// <summary>
+    /// Windows-Speicherverwaltung (WMI) – nur interne Laufwerke, USB wird
+    /// nicht angefasst.
+    /// </summary>
+    Windows,
+
+    /// <summary>Keine Laufwerks-Sensoren.</summary>
+    Off,
+}
+
 public sealed class AppSettings
 {
     public int MqttPort { get; set; } = 1883;
@@ -84,12 +104,19 @@ public sealed class AppSettings
     public bool AutoUpdate { get; set; } = true;
 
     /// <summary>
-    /// Ob LibreHardwareMonitor auch Laufwerke (Temperatur, Auslastung, SMART)
-    /// abfragt. Die Abfrage läuft bei jedem Poll direkt gegen die Laufwerke
-    /// und kann USB-Massenspeicher (z. B. SD-Kartenleser) beim Kopieren
-    /// stören. Wer keine Laufwerks-Sensoren sendet, schaltet sie ab.
+    /// Quelle der Laufwerks-Sensoren. LHM fragt die Laufwerke bei jedem Poll
+    /// direkt per SMART/NVMe ab und kann dabei USB-Massenspeicher (z. B.
+    /// SD-Kartenleser) beim Kopieren stören. "Windows" liest nur interne
+    /// Laufwerke über WMI, "Off" fragt gar keine Laufwerke ab.
     /// </summary>
-    public bool EnableStorageSensors { get; set; } = true;
+    public StorageSensorSource StorageSource { get; set; } = StorageSensorSource.Lhm;
+
+    /// <summary>
+    /// Nur zum Einlesen älterer settings.json (bool-Schalter aus v1.0.x):
+    /// false wird beim Laden zu <see cref="StorageSensorSource.Off"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? EnableStorageSensors { get; set; }
 
     /// <summary>
     /// Vom Benutzer ausgewählte Sensoren. Leer = noch nicht konfiguriert,
@@ -121,6 +148,9 @@ public sealed class AppSettings
                 if (loaded is not null)
                 {
                     loaded.RestorePassword();
+                    if (loaded.EnableStorageSensors == false)
+                        loaded.StorageSource = StorageSensorSource.Off;
+                    loaded.EnableStorageSensors = null;
                     return loaded;
                 }
             }
@@ -152,7 +182,7 @@ public sealed class AppSettings
         SerialMode            = SerialMode,
         Language              = Language,
         AutoUpdate            = AutoUpdate,
-        EnableStorageSensors  = EnableStorageSensors,
+        StorageSource         = StorageSource,
         EnabledSensors        = EnabledSensors
             .Select(e => new SensorEntry
                 { Identifier = e.Identifier, MqttKey = e.MqttKey, IsEnabled = e.IsEnabled })

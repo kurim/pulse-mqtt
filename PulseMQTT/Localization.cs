@@ -165,6 +165,10 @@ public static class Localization
         ["Settings.AutoStart"] = ("Mit Windows starten:", "Start with Windows:"),
         ["Settings.AutoUpdate"] = ("Automatische Updates:", "Automatic updates:"),
         ["Settings.StorageSensors"] = ("Laufwerks-Sensoren:", "Drive sensors:"),
+        ["Settings.StorageSensors.Lhm"] = ("LibreHardwareMonitor", "LibreHardwareMonitor"),
+        ["Settings.StorageSensors.Windows"] = (
+            "Windows (nur interne Laufwerke)", "Windows (internal drives only)"),
+        ["Settings.StorageSensors.Off"] = ("Aus", "Off"),
         ["Settings.Language"] = ("Sprache:", "Language:"),
         ["Settings.Hint"] = (
             "Topic muss mit der Firmware-Konfiguration übereinstimmen.",

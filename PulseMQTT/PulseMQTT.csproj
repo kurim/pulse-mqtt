@@ -63,6 +63,8 @@
     <TrimmerRootAssembly Include="MQTTnet.Server" />
     <!-- Service-Controller für PawnIO-Erkennung -->
     <TrimmerRootAssembly Include="System.ServiceProcess.ServiceController" />
+    <!-- Laufwerks-Sensoren über WMI -->
+    <TrimmerRootAssembly Include="System.Management" />
     <!-- USB/Seriell-Ausgabe -->
     <TrimmerRootAssembly Include="System.IO.Ports" />
   </ItemGroup>
@@ -76,6 +78,7 @@
     <PackageReference Include="MQTTnet.Server" Version="5.*" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.*" />
+    <PackageReference Include="System.Management" Version="8.*" />
     <!-- DPAPI-Verschlüsselung des MQTT-Passworts in settings.json -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.*" />
     <!-- Kein eigener PackageReference nötig: LibreHardwareMonitorLib bringt bereits

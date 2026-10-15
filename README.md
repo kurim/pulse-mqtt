@@ -114,7 +114,7 @@ Opened via **right-click → Select sensors…** or **double-click** on the tray
 | Update interval | `2.0 s` | How often new values are sent |
 | Start with Windows | off | Autostart (registry or Task Scheduler) |
 | Automatic updates | on | Checks the latest GitHub release at startup (and daily afterwards), downloads it and restarts PulseMQTT with the new version |
-| Drive sensors | on | Lets LibreHardwareMonitor query drives (temperature, load, SMART). Turn off if you do not send drive values – the queries can disturb USB mass storage such as SD card readers while copying |
+| Drive sensors | LibreHardwareMonitor | Source of the drive values (temperature, load): *LibreHardwareMonitor*, *Windows* (internal SATA/NVMe drives only, read via WMI) or *Off*. LibreHardwareMonitor queries the drives directly on every poll, which can disturb USB mass storage such as SD card readers while copying – use *Windows* or *Off* in that case |
 | Language | Automatic | Automatic (follows Windows), German, or English |
 
 If username and password are left empty, the broker accepts anonymous connections (default). Set both to require clients to authenticate before they can connect.
