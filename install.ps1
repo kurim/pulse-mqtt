@@ -92,4 +92,4 @@ foreach ($attempt in 1..10) {
     }
 }
 Write-Warning ("$name was installed but its broker is not listening. Is another program using port 1883 " +
-    "(old PulseMQTT: run again with -ReplaceOld)? To see the error, run in this window: & '$exe'")
+    "(old PulseMQTT: run again with -ReplaceOld)? To see the error, run: & '$exe' --console")

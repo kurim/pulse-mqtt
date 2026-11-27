@@ -39,7 +39,7 @@ every logon. `-ReplaceOld` switches off the old .NET app, `-Uninstall` removes t
 
 ## Use
 
-Right-click the tray icon for settings and sensor selection. Values go to the topic
+Right-click the tray icon for settings and sensor selection. Start the program with `--console` to see the sensor values in a console window. Values go to the topic
 `pulsemqtt/hwinfo` (QoS 0, not retained) on port 1883.
 
 The broker has no TLS. Set a user name and password: without them everyone on the network
@@ -49,7 +49,7 @@ can connect.
 
 The app only installs releases signed with the key whose public half is in `update.pub`.
 
-To publish a version, set it in `Cargo.toml` and `CHANGELOG.md`, merge that into `main`
+To publish a version, set it in `Cargo.toml` and add its section to `CHANGELOG.md` (it becomes the release notes), merge that into `main`
 and push the tag:
 
 ```powershell

@@ -7,6 +7,7 @@ use crate::{
     update,
 };
 use eframe::egui::{self, Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     os::windows::process::CommandExt,
     process::Command,
@@ -16,7 +17,21 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+use windows_sys::Win32::{
+    Foundation::HWND,
+    Graphics::Dwm::{
+        DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DwmSetWindowAttribute,
+    },
+    System::LibraryLoader::GetModuleHandleW,
+    System::Threading::CREATE_NO_WINDOW,
+    UI::{
+        HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
+        WindowsAndMessaging::{
+            ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_SHARED, LoadImageW, SM_CXICON, SM_CXSMICON,
+            SendMessageW, WM_SETICON,
+        },
+    },
+};
 
 /// Exit code of a window process that saved changes.
 pub const SAVED: i32 = 10;
@@ -60,12 +75,11 @@ pub fn run(page: Page) -> Result<bool, Box<dyn std::error::Error>> {
         Page::Settings => [540.0, 940.0],
         Page::Sensors => [960.0, 680.0],
     };
-    let mut viewport = egui::ViewportBuilder::default()
+    let viewport = egui::ViewportBuilder::default()
         .with_inner_size(size)
-        .with_min_inner_size([480.0, 400.0]);
-    if let Some(icon) = icon() {
-        viewport = viewport.with_icon(icon);
-    }
+        .with_min_inner_size([480.0, 400.0])
+        // Empty: keeps egui from setting its own icon, see `set_icon`.
+        .with_icon(egui::IconData::default());
     let options = eframe::NativeOptions {
         viewport,
         centered: true,
@@ -76,44 +90,74 @@ pub fn run(page: Page) -> Result<bool, Box<dyn std::error::Error>> {
         options,
         Box::new(|creation| {
             style(&creation.egui_ctx);
+            if let Ok(handle) = creation.window_handle()
+                && let RawWindowHandle::Win32(window) = handle.as_raw()
+            {
+                let window = window.hwnd.get() as HWND;
+                match_title_bar(window);
+                set_icon(window);
+            }
             Ok(Box::new(app))
         }),
     )?;
     Ok(saved.load(Ordering::Relaxed))
 }
 
-/// The largest image inside app.ico, which holds uncompressed 32-bit bitmaps.
-fn icon() -> Option<egui::IconData> {
-    let file: &[u8] = include_bytes!("../app.ico");
-    let number = |at: usize| Some(u32::from_le_bytes(file.get(at..at + 4)?.try_into().ok()?));
-    let count = u16::from_le_bytes([*file.get(4)?, *file.get(5)?]);
-    (0..usize::from(count))
-        .filter_map(|i| {
-            let start = number(6 + i * 16 + 12)? as usize;
-            // BITMAPINFOHEADER: 40 bytes, then width, doubled height, planes, bits, compression.
-            let width = number(start + 4)?;
-            let plain = number(start)? == 40
-                && number(start + 14)? & 0xFFFF == 32
-                && number(start + 16)? == 0
-                && number(start + 8)? == width.checked_mul(2)?
-                && (1..=256).contains(&width);
-            let side = width as usize;
-            let pixels = file.get(start + 40..start + 40 + side * side * 4)?;
-            plain.then(|| egui::IconData {
-                // Rows are stored bottom-up as BGRA.
-                rgba: pixels
-                    .chunks_exact(side * 4)
-                    .rev()
-                    .flat_map(|row| row.as_chunks::<4>().0)
-                    .flat_map(|p| [p[2], p[1], p[0], p[3]])
-                    .collect(),
-                width,
-                height: width,
-            })
-        })
-        .max_by_key(|icon| icon.width)
+/// Gives the title bar the colours of the window (Windows 11; ignored before).
+fn match_title_bar(window: HWND) {
+    let color = |c: Color32| u32::from_le_bytes([c.r(), c.g(), c.b(), 0]);
+    let attributes = [
+        (DWMWA_CAPTION_COLOR, color(BACKGROUND)),
+        (DWMWA_BORDER_COLOR, color(BORDER)),
+        (DWMWA_TEXT_COLOR, color(TEXT)),
+    ];
+    for (attribute, value) in attributes {
+        // SAFETY: the value is a u32 (COLORREF) with matching size.
+        unsafe {
+            DwmSetWindowAttribute(window, attribute as u32, (&raw const value).cast(), 4);
+        }
+    }
 }
+
+/// Uses the icon embedded in the program instead of carrying a second copy of it.
+fn set_icon(window: HWND) {
+    let sizes = [(ICON_SMALL, SM_CXSMICON), (ICON_BIG, SM_CXICON)];
+    for (which, metric) in sizes {
+        // SAFETY: resource 1 is the embedded icon; LR_SHARED icons need no cleanup.
+        unsafe {
+            let side = GetSystemMetricsForDpi(metric, GetDpiForWindow(window));
+            let icon = LoadImageW(
+                GetModuleHandleW(std::ptr::null()),
+                std::ptr::without_provenance(1),
+                IMAGE_ICON,
+                side,
+                side,
+                LR_SHARED,
+            );
+            SendMessageW(window, WM_SETICON, which as usize, icon as isize);
+        }
+    }
+}
+
+/// Segoe UI from Windows, so that no fonts have to be built into the program.
+fn fonts() -> egui::FontDefinitions {
+    let mut fonts = egui::FontDefinitions::empty();
+    // The second font only fills in symbols that the first one lacks.
+    for file in ["segoeui.ttf", "seguisym.ttf"] {
+        let Ok(data) = std::fs::read(format!(r"C:\Windows\Fonts\{file}")) else {
+            continue;
+        };
+        let data = Arc::new(egui::FontData::from_owned(data));
+        fonts.font_data.insert(file.to_owned(), data);
+        for family in fonts.families.values_mut() {
+            family.push(file.to_owned());
+        }
+    }
+    fonts
+}
+
 fn style(context: &egui::Context) {
+    context.set_fonts(fonts());
     context.set_theme(egui::Theme::Dark);
     context.global_style_mut(|style| {
         let v = &mut style.visuals;
@@ -468,55 +512,58 @@ impl App {
             }
         });
 
+        // Only the table scrolls; the summary and the filters stay in place.
         card(ui, "", |ui| {
-            egui::Grid::new("sensors")
-                .num_columns(6)
-                .striped(true)
-                .spacing([24.0, 12.0])
-                .show(ui, |ui| {
-                    for title in [
-                        "",
-                        "HARDWARE",
-                        t("TYP", "TYPE"),
-                        "SENSOR",
-                        t("MQTT-SCHLÜSSEL", "MQTT KEY"),
-                        t("AKTUELL", "CURRENT"),
-                    ] {
-                        ui.colored_label(MUTED, title);
-                    }
-                    ui.end_row();
-                    for r in &self.readings {
-                        if self.filter.is_some_and(|g| g != r.group) {
-                            continue;
+            egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+                egui::Grid::new("sensors")
+                    .num_columns(6)
+                    .striped(true)
+                    .spacing([24.0, 12.0])
+                    .show(ui, |ui| {
+                        for title in [
+                            "",
+                            "HARDWARE",
+                            t("TYP", "TYPE"),
+                            "SENSOR",
+                            t("MQTT-SCHLÜSSEL", "MQTT KEY"),
+                            t("AKTUELL", "CURRENT"),
+                        ] {
+                            ui.colored_label(MUTED, title);
                         }
-                        let before = self.config.sensor(&r.id);
-                        let mut sensor: Sensor = before.clone();
-                        let name = name(&r.id, language);
-                        ui.checkbox(&mut sensor.enabled, "").widget_info(|| {
-                            egui::WidgetInfo::selected(
-                                egui::Role::CheckBox,
-                                true,
-                                before.enabled,
-                                &name,
-                            )
-                        });
-                        ui.colored_label(MUTED, hardware(r.group, language));
-                        ui.colored_label(MUTED, kind(r.kind, language));
-                        ui.label(&name);
-                        ui.add_sized(
-                            [220.0, 30.0],
-                            egui::TextEdit::singleline(&mut sensor.key).char_limit(MAX_KEY),
-                        );
-                        ui.label(match r.value {
-                            Some(v) => format!("{v:.1} {}", r.unit()),
-                            None => "n/a".to_owned(),
-                        });
                         ui.end_row();
-                        if sensor != before {
-                            self.config.sensors.insert(r.id.clone(), sensor);
+                        for r in &self.readings {
+                            if self.filter.is_some_and(|g| g != r.group) {
+                                continue;
+                            }
+                            let before = self.config.sensor(&r.id);
+                            let mut sensor: Sensor = before.clone();
+                            let name = name(&r.id, language);
+                            ui.checkbox(&mut sensor.enabled, "").widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::Role::CheckBox,
+                                    true,
+                                    before.enabled,
+                                    &name,
+                                )
+                            });
+                            ui.colored_label(MUTED, hardware(r.group, language));
+                            ui.colored_label(MUTED, kind(r.kind, language));
+                            ui.label(&name);
+                            ui.add_sized(
+                                [220.0, 30.0],
+                                egui::TextEdit::singleline(&mut sensor.key).char_limit(MAX_KEY),
+                            );
+                            ui.label(match r.value {
+                                Some(v) => format!("{v:.1} {}", r.unit()),
+                                None => "n/a".to_owned(),
+                            });
+                            ui.end_row();
+                            if sensor != before {
+                                self.config.sensors.insert(r.id.clone(), sensor);
+                            }
                         }
-                    }
-                });
+                    });
+            });
         });
     }
 }
@@ -530,14 +577,16 @@ impl eframe::App for App {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| self.buttons(ui));
         });
-        egui::CentralPanel::default().frame(margin).show(ui, |ui| {
-            egui::ScrollArea::both()
-                .auto_shrink(false)
-                .show(ui, |ui| match self.page {
-                    Page::Settings => self.settings(ui),
-                    Page::Sensors => self.sensor_page(ui),
-                });
-        });
+        egui::CentralPanel::default()
+            .frame(margin)
+            .show(ui, |ui| match self.page {
+                Page::Settings => {
+                    egui::ScrollArea::both()
+                        .auto_shrink(false)
+                        .show(ui, |ui| self.settings(ui));
+                }
+                Page::Sensors => self.sensor_page(ui),
+            });
     }
 }
 
@@ -705,12 +754,5 @@ mod tests {
         };
         assert!(task_enabled(&xml("")));
         assert!(!task_enabled(&xml("<Enabled>false</Enabled>")));
-    }
-
-    #[test]
-    fn app_icon_contains_a_usable_image() {
-        let icon = icon().unwrap();
-        assert_eq!(icon.width, 256);
-        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
     }
 }
