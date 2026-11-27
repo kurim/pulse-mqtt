@@ -48,7 +48,18 @@ can connect.
 ## Updates and releases
 
 The app only installs releases signed with the key whose public half is in `update.pub`.
-`release.ps1` builds, signs and publishes a version; see the notes inside it.
+
+To publish a version, set it in `Cargo.toml` and `CHANGELOG.md`, merge that into `main`
+and push the tag:
+
+```powershell
+git tag -s v2026.11.0 -m v2026.11.0
+git push origin v2026.11.0
+```
+
+The release workflow tests, builds, signs and publishes it as a pre-release. It needs the
+repository secrets `MINISIGN_SECRET_KEY` (content of the secret key file) and
+`MINISIGN_PASSWORD`.
 
 ## License
 
