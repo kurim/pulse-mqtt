@@ -114,6 +114,7 @@ public sealed class TrayAppContext : ApplicationContext
         UpdateService.CleanupAfterUpdate();
 
         await ApplySettingsAsync(_settings);
+        TrimMemory(); // JIT-/Discovery-Spitze des Starts nicht 5 Minuten halten
 
         // Sensor-Erstkonfiguration wenn noch nichts ausgewählt wurde
         if (_settings.EnabledSensors.Count == 0)
@@ -315,6 +316,7 @@ public sealed class TrayAppContext : ApplicationContext
             form.Result.Save();
             await ApplySettingsAsync(form.Result);
         }
+        TrimMemory(); // Dialog-Spitze (Controls, GDI) sofort wieder abgeben
     }
 
     private void OnSensorsClicked(object? sender, EventArgs e)
@@ -326,6 +328,7 @@ public sealed class TrayAppContext : ApplicationContext
             _settings.EnabledSensors = picker.Result;
             _settings.Save();
         }
+        TrimMemory(); // Dialog-Spitze (Controls, GDI) sofort wieder abgeben
     }
 
     private void OnRestartAsAdminClicked(object? sender, EventArgs e)
