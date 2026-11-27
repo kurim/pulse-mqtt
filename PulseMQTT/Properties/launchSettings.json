@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "PulseMQTT": {
-      "commandName": "Project",
-      "nativeDebugging": false
-    }
-  }
-}
