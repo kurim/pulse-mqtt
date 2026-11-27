@@ -1,0 +1,56 @@
+name: Release
+
+# Push a tag "v<version from Cargo.toml>" on main to publish a release.
+# Needs the repository secrets MINISIGN_SECRET_KEY (content of the key file) and
+# MINISIGN_PASSWORD.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check tag
+        id: version
+        run: |
+          rustup toolchain install stable --profile minimal
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ("${{ github.ref_name }}" -ne "v$version") { throw "Tag does not match version $version in Cargo.toml" }
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE) { throw "The tagged commit is not on main" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Test
+        run: cargo test --locked
+
+      # Builds the signing tool too, so that nothing is compiled while the key is available.
+      - name: Build
+        run: cargo build --locked --release --bins --example sign
+
+      - name: Sign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: target\release\examples\sign.exe target\release\pulsemqtt.exe "version:${{ steps.version.outputs.version }}"
+
+      # A pre-release, so that the updater of the old .NET app ignores it.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}"
+          target\release\pulsemqtt.exe
+          target\release\pulsemqtt.exe.minisig
+          --verify-tag --prerelease --generate-notes
+          --title "PulseMQTT ${{ steps.version.outputs.version }}"
+          --notes "Requires the PawnIO driver (https://pawnio.eu/) for CPU temperature, power and fan speeds."
