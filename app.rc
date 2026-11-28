@@ -1,3 +1,31 @@
 1 ICON "app.ico"
 // Version 6 of the common controls, needed to draw them ourselves.
 1 24 "app.manifest"
+
+// File properties; the description is also the name Task Manager shows. VERSION_* come
+// from build.rs. The setup file is a copy of the program, so both show the same.
+1 VERSIONINFO
+FILEVERSION VERSION_NUMBERS
+PRODUCTVERSION VERSION_NUMBERS
+FILEOS 0x40004 // Windows NT
+FILETYPE 0x1 // application
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0" // English (United States), Unicode
+        BEGIN
+            VALUE "CompanyName", "kurim"
+            VALUE "FileDescription", "PulseMQTT - PC sensor monitor"
+            VALUE "FileVersion", VERSION_TEXT
+            VALUE "InternalName", "pulsemqtt"
+            VALUE "LegalCopyright", "Copyright (c) 2026 Felix, MIT License"
+            VALUE "OriginalFilename", "pulsemqtt.exe"
+            VALUE "ProductName", "PulseMQTT"
+            VALUE "ProductVersion", VERSION_TEXT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

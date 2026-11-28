@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "pulsemqtt"
-version = "2026.11.4"
+version = "2026.11.5"
 dependencies = [
  "adlx-lite",
  "embed-resource",
