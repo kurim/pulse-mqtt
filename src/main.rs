@@ -8,24 +8,33 @@ mod fans;
 mod gpu;
 mod gui;
 mod login;
+mod migrate;
 mod mqtt;
 mod pawnio;
 mod sensors;
 mod serial;
 mod storage;
 mod tray;
+mod ui;
 mod update;
 
 use std::{
-    os::windows::io::IntoRawHandle, path::PathBuf, process::Command, sync::mpsc::RecvTimeoutError,
-    thread, time::Duration,
+    os::windows::io::IntoRawHandle,
+    path::PathBuf,
+    process::Command,
+    sync::mpsc::RecvTimeoutError,
+    thread,
+    time::{Duration, Instant},
 };
 use windows_sys::Win32::{
     Foundation::CloseHandle,
     System::{
         Console::{AllocConsole, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle},
         LibraryLoader::{LOAD_LIBRARY_SEARCH_SYSTEM32, SetDefaultDllDirectories},
-        Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
+        Threading::{
+            GetCurrentProcess, OpenProcess, PROCESS_SYNCHRONIZE, SetProcessWorkingSetSize,
+            WaitForSingleObject,
+        },
     },
     UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
 };
@@ -74,6 +83,13 @@ fn has_argument(name: &str) -> bool {
     std::env::args().any(|a| a == name)
 }
 
+/// Hands the memory that is not in use back to Windows, which keeps the tray process
+/// small in RAM. Pages that are needed again come back on their own.
+fn trim_memory() {
+    // SAFETY: the pseudo handle of this process; -1 for both sizes means "empty".
+    unsafe { SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX) };
+}
+
 /// Without a console, an error that stops the app would otherwise go unnoticed.
 fn main() {
     if let Err(e) = run() {
@@ -90,6 +106,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // SAFETY: plain Win32 call without pointers, made before any library is loaded.
     let restricted = unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) };
     assert!(restricted != 0, "could not restrict the DLL search path");
+
+    // Earlier versions kept the settings next to the program; the installed copy counts most.
+    let beside = |program: PathBuf| program.parent().map(PathBuf::from);
+    let earlier: Vec<PathBuf> = [Some(autostart::program()), std::env::current_exe().ok()]
+        .into_iter()
+        .flatten()
+        .filter_map(beside)
+        .collect();
+    config::move_settings(&earlier, &config::data_dir()?)?;
 
     // The settings windows run as separate processes, started from the tray menu.
     if let Some(page) = std::env::args().find_map(|a| gui::Page::from_argument(&a)) {
@@ -110,7 +135,35 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
 
     update::clean_up();
-    let config = config::Config::load()?;
+    // First start after the .NET app: take over its settings.
+    let migration = migrate::run();
+    if let Some(outcome) = &migration {
+        if let Some(message) = &outcome.message {
+            eprintln!("{message}");
+        }
+        if outcome.autostart && autostart::possible() {
+            match autostart::enable() {
+                Ok(()) => {
+                    autostart::remove_old_app();
+                    // The new process knows nothing about the migration, so tell the user now.
+                    if let Some(message) = &outcome.message {
+                        tray::show_error(message);
+                    }
+                    // Continue with the installed copy, which the settings now belong to.
+                    return Ok(start_again(autostart::program())?);
+                }
+                Err(e) => eprintln!("Autostart was not taken over: {e}"),
+            }
+        }
+        if let Some(message) = outcome.message.clone() {
+            // On its own thread, so that publishing starts right away.
+            thread::spawn(move || tray::show_error(&message));
+        }
+    }
+    let mut config = config::Config::load()?;
+    if migration.is_some_and(|m| m.block_mqtt) {
+        config.mqtt_enabled = false;
+    }
     let language = config.language;
     let mut sensors = sensors::Sensors::open()?;
 
@@ -158,6 +211,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         config.auto_update,
     );
     let interval = Duration::from_secs_f64(config.interval_seconds);
+    // The first time shortly after the start, when everything has been set up.
+    let mut next_trim = Instant::now() + Duration::from_secs(10);
 
     loop {
         // CPU load and power are averages over this pause.
@@ -194,6 +249,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             && let Err(e) = broker.publish(json)
         {
             eprintln!("MQTT publish failed: {e}");
+        }
+        if Instant::now() >= next_trim {
+            trim_memory();
+            next_trim = Instant::now() + Duration::from_secs(60);
         }
     }
 }

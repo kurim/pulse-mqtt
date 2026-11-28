@@ -9,7 +9,10 @@ use std::{
 };
 use windows_sys::Win32::{
     Security::Authentication::Identity::{GetUserNameExW, NameSamCompatible},
-    System::Threading::CREATE_NO_WINDOW,
+    System::{
+        Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegDeleteKeyValueW, RegGetValueW},
+        Threading::CREATE_NO_WINDOW,
+    },
     UI::Shell::IsUserAnAdmin,
 };
 
@@ -37,10 +40,46 @@ pub fn enabled() -> bool {
 }
 
 pub fn old_app_enabled() -> bool {
-    task_state(OLD_TASK)
+    task_state(OLD_TASK) || old_run_value(false)
 }
 
-/// Copies the program with its settings to Program Files and starts it at every logon.
+/// Removes both ways the .NET app used to start with Windows.
+pub fn remove_old_app() {
+    run(&[
+        "/Delete".as_ref(),
+        "/TN".as_ref(),
+        OLD_TASK.as_ref(),
+        "/F".as_ref(),
+    ])
+    .ok();
+    old_run_value(true);
+}
+
+/// The Run value of the .NET app without admin rights: whether it exists, or delete it.
+fn old_run_value(delete: bool) -> bool {
+    let wide = |text: &str| -> Vec<u16> { text.encode_utf16().chain([0]).collect() };
+    let key = wide(r"Software\Microsoft\Windows\CurrentVersion\Run");
+    let name = wide(OLD_TASK);
+    // SAFETY: NUL-terminated strings; no output buffers are passed.
+    let status = unsafe {
+        if delete {
+            RegDeleteKeyValueW(HKEY_CURRENT_USER, key.as_ptr(), name.as_ptr())
+        } else {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                name.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        }
+    };
+    status == 0
+}
+
+/// Copies the program to Program Files and starts it at every logon.
 pub fn enable() -> Result<(), String> {
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
     let folder = Path::new(FOLDER);
@@ -48,9 +87,8 @@ pub fn enable() -> Result<(), String> {
         .as_os_str()
         .eq_ignore_ascii_case(program().as_os_str())
     {
-        // A login from the environment would not exist in the copy: the broker would be open.
-        if std::env::var_os("PULSEMQTT_USER").is_some()
-            && !current.with_file_name("login.dat").exists()
+        // The task does not get a login from the environment: the broker would be open.
+        if std::env::var_os("PULSEMQTT_USER").is_some() && matches!(crate::login::saved(), Ok(None))
         {
             return Err("PULSEMQTT_USER: save the login in this window first".into());
         }
@@ -86,8 +124,6 @@ pub fn disable() -> Result<(), String> {
     .map(drop)
 }
 
-/// Settings that do not exist next to the source are left alone, so that a login saved
-/// for the copy is never removed silently.
 fn copy_program(source: &Path, folder: &Path) -> Result<(), String> {
     let fail = |path: &Path, e: std::io::Error| format!("{}: {e}", path.display());
     std::fs::create_dir_all(folder).map_err(|e| fail(folder, e))?;
@@ -95,19 +131,11 @@ fn copy_program(source: &Path, folder: &Path) -> Result<(), String> {
     let program = std::fs::read(source).map_err(|e| fail(source, e))?;
     if target.exists() {
         // It may be running.
-        crate::update::replace(&target, &program)?;
+        crate::update::replace(&target, &program)
     } else {
-        std::fs::write(&target, program).map_err(|e| fail(&target, e))?;
+        std::fs::write(&target, program).map_err(|e| fail(&target, e))
     }
-    for name in ["config.json", "login.dat"] {
-        let from = source.with_file_name(name);
-        if from.exists() {
-            std::fs::copy(&from, folder.join(name)).map_err(|e| fail(&from, e))?;
-        }
-    }
-    Ok(())
 }
-
 fn user() -> Result<String, String> {
     let mut name = [0u16; 512];
     let mut length = name.len() as u32;
@@ -217,23 +245,15 @@ mod tests {
     }
 
     #[test]
-    fn copy_takes_settings_along_and_keeps_a_saved_login() {
+    fn copy_installs_and_replaces_the_program() {
         let root = std::env::temp_dir().join(format!("pulsemqtt-copy-{}", std::process::id()));
-        let (from, to) = (root.join("from"), root.join("to"));
-        std::fs::create_dir_all(&from).unwrap();
-        let source = from.join("pulsemqtt.exe");
-        std::fs::write(&source, b"v1").unwrap();
-        std::fs::write(from.join("config.json"), b"settings").unwrap();
-        std::fs::write(from.join("login.dat"), b"secret").unwrap();
-        copy_program(&source, &to).unwrap();
-        assert_eq!(std::fs::read(to.join("login.dat")).unwrap(), b"secret");
-
-        std::fs::write(&source, b"v2").unwrap();
-        std::fs::remove_file(from.join("login.dat")).unwrap();
-        copy_program(&source, &to).unwrap();
-        assert_eq!(std::fs::read(to.join("pulsemqtt.exe")).unwrap(), b"v2");
-        assert_eq!(std::fs::read(to.join("config.json")).unwrap(), b"settings");
-        assert_eq!(std::fs::read(to.join("login.dat")).unwrap(), b"secret");
+        let (source, to) = (root.join("source.exe"), root.join("to"));
+        std::fs::create_dir_all(&root).unwrap();
+        for version in [b"v1", b"v2"] {
+            std::fs::write(&source, version).unwrap();
+            copy_program(&source, &to).unwrap();
+            assert_eq!(std::fs::read(to.join("pulsemqtt.exe")).unwrap(), version);
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 }

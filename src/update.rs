@@ -57,6 +57,8 @@ pub fn install(release: &Release) -> Result<(), String> {
 pub fn clean_up() {
     if let Ok(exe) = std::env::current_exe() {
         std::fs::remove_file(exe.with_extension("old")).ok();
+        // The .NET app keeps its program as "<name>.exe.old" when it updates to this one.
+        std::fs::remove_file(exe.with_extension("exe.old")).ok();
     }
 }
 

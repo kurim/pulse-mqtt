@@ -16,6 +16,13 @@ pub struct Readings {
     pub temp: Option<f64>,
     pub fan_rpm: Option<f64>,
     pub fan_percent: Option<f64>,
+    pub hotspot: Option<f64>,
+    pub memory_clock: Option<f64>,
+    /// In MiB.
+    pub memory_used: Option<f64>,
+    /// In volts.
+    pub voltage: Option<f64>,
+    pub board_power: Option<f64>,
 }
 
 pub enum Gpu {
@@ -47,6 +54,15 @@ impl Gpu {
                     temp: d.temperature(TemperatureSensor::Gpu).ok().map(Into::into),
                     fan_rpm: d.fan_speed_rpm(0).ok().map(Into::into),
                     fan_percent: d.fan_speed(0).ok().map(Into::into),
+                    memory_clock: d.clock_info(Clock::Memory).ok().map(Into::into),
+                    memory_used: d
+                        .memory_info()
+                        .ok()
+                        .map(|m| m.used as f64 / f64::from(1 << 20)),
+                    // NVML does not report these.
+                    hotspot: None,
+                    voltage: None,
+                    board_power: None,
                 }
             }
             Self::Amd(amd) => amd.read(),
@@ -95,6 +111,11 @@ impl Amd {
                 .and_then(|m| m.fan_duty())
                 .ok()
                 .map(Into::into),
+            hotspot: m.hotspot_temperature().ok(),
+            memory_clock: m.vram_clock_speed().ok().map(Into::into),
+            memory_used: m.vram().ok().map(Into::into),
+            voltage: m.voltage().ok().map(|mv| f64::from(mv) / 1000.0),
+            board_power: m.total_board_power().ok(),
         }
     }
 }

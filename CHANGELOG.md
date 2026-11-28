@@ -7,6 +7,27 @@ Versions of the Rust app follow `year.month.patch`.
 
 ## [Unreleased]
 
+## [2026.11.3] - 2026-11-28
+
+### Added
+
+- More sensors, listed with `Show all detected` and off by default: load per logical
+  processor, GPU hotspot temperature, memory clock, memory used, voltage and board power,
+  total memory and usage of fixed drives.
+- The first start takes over the settings of the .NET app: port, topic, interval, serial
+  output, language, selected sensors with their keys, and the MQTT login. Run as
+  administrator it also replaces the old autostart. MQTT stays off if the login cannot be
+  read.
+
+### Changed
+
+- The settings and sensor windows are drawn with Windows GDI. They need about 2 to 8 MB
+  of memory instead of about 60 MB, and the program shrinks to about 3.4 MB.
+- `config.json` and `login.dat` are stored in `%APPDATA%\PulseMQTT` instead of next to
+  the program. Existing files are moved there at the first start.
+- The tray process hands unused memory back to Windows once a minute and shows about
+  1 MB instead of 8 MB of private memory in Task Manager.
+
 ## [2026.11.2] - 2026-11-28
 
 ### Changed
@@ -63,7 +84,8 @@ First release of the rewrite in Rust. It replaces the .NET app, whose last relea
 - Fan speeds on boards without a Nuvoton NCT6799D.
 - The choice between sources for drive sensors.
 
-[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.2...HEAD
+[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.3...HEAD
+[2026.11.3]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.2...v2026.11.3
 [2026.11.2]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.1...v2026.11.2
 [2026.11.1]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.0...v2026.11.1
 [2026.11.0]: https://github.com/kurim/pulse-mqtt/releases/tag/v2026.11.0

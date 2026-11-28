@@ -28,6 +28,12 @@ PawnIO has to be installed. Take `pulsemqtt.exe` from the
 switch on "Start with Windows" in the settings. The app then copies itself to
 `C:\Program Files\PulseMQTT-Rust` and starts with admin rights at every logon.
 
+Settings (`config.json`) and the encrypted login (`login.dat`) are kept in
+`%APPDATA%\PulseMQTT`. Programs running under your account can change them.
+
+At its first start the app takes over the settings and login of the earlier .NET app.
+Sensors that only that app offered are listed in a message.
+
 To install from source instead, build with a current Rust toolchain on Windows (MSVC) and
 run the installer in an administrator PowerShell:
 

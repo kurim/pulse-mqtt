@@ -1,33 +1,18 @@
-//! The settings and sensor windows (egui), run as their own process.
+//! The settings and sensor windows, run as their own process.
 
 use crate::{
     autostart,
-    config::{Config, Language, MAX_KEY, Sensor, SerialMode},
+    config::{self, Config, Language, MAX_KEY, Sensor, SerialMode},
     login,
     sensors::{Group, Kind, Reading, Sensors},
+    ui::{self, BACKGROUND, CARD, ERROR, Event, Font, Look, MUTED, TEXT, Window},
     update,
-};
-use eframe::egui::{self, Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke};
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicI32, Ordering},
-    },
-    time::{Duration, Instant},
 };
 use windows_sys::Win32::{
     Foundation::HWND,
-    Graphics::Dwm::{
-        DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DwmSetWindowAttribute,
-    },
-    System::LibraryLoader::GetModuleHandleW,
     UI::{
-        HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
-        WindowsAndMessaging::{
-            ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_SHARED, LoadImageW, SM_CXICON, SM_CXSMICON,
-            SendMessageW, WM_SETICON,
-        },
+        HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
+        WindowsAndMessaging::{BN_CLICKED, EN_CHANGE, ES_NUMBER, ES_PASSWORD},
     },
 };
 
@@ -36,14 +21,25 @@ pub const SAVED: i32 = 10;
 /// Saved, and the app was just set up to start with Windows: continue with that copy.
 pub const INSTALLED: i32 = 11;
 
-const BACKGROUND: Color32 = Color32::from_rgb(13, 14, 18);
-const CARD: Color32 = Color32::from_rgb(22, 25, 33);
-const FIELD: Color32 = Color32::from_rgb(13, 15, 21);
-const BORDER: Color32 = Color32::from_rgb(38, 43, 53);
-const ACCENT: Color32 = Color32::from_rgb(74, 222, 128);
-const TEXT: Color32 = Color32::from_rgb(230, 233, 238);
-const MUTED: Color32 = Color32::from_rgb(125, 133, 148);
-const ERROR: Color32 = Color32::from_rgb(255, 110, 110);
+// Enter and Escape send the first two ids.
+const SAVE: u16 = 1;
+const CANCEL: u16 = 2;
+const DEFAULTS: u16 = 3;
+const SHOW_ALL: u16 = 4;
+/// First of the filter buttons.
+const FILTER: u16 = 10;
+const FOOTER: i32 = 68;
+/// Top of the sensor table.
+const TABLE: i32 = 232;
+const FILTERS: [Option<Group>; 5] = [
+    None,
+    Some(Group::Cpu),
+    Some(Group::Gpu),
+    Some(Group::Memory),
+    Some(Group::Drive),
+];
+const LANGUAGES: [Language; 3] = [Language::Auto, Language::De, Language::En];
+const MODES: [SerialMode; 2] = [SerialMode::UsbSerialJtag, SerialMode::Uart0];
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Page {
@@ -61,214 +57,47 @@ impl Page {
     }
 }
 
-/// Shows the window until it is closed. Returns the exit code for the process.
-pub fn run(page: Page) -> Result<i32, Box<dyn std::error::Error>> {
-    let saved = Arc::new(AtomicI32::new(0));
-    let app = App::new(page, saved.clone())?;
-    let title = match page {
-        Page::Settings => app.t("PulseMQTT - Einstellungen", "PulseMQTT - Settings"),
-        Page::Sensors => app.t("PulseMQTT - Sensoren", "PulseMQTT - Sensors"),
-    }
-    .to_owned();
-    let size = match page {
-        Page::Settings => [540.0, 940.0],
-        Page::Sensors => [960.0, 680.0],
-    };
-    let viewport = egui::ViewportBuilder::default()
-        .with_inner_size(size)
-        .with_min_inner_size([480.0, 400.0])
-        // Empty: keeps egui from setting its own icon, see `set_icon`.
-        .with_icon(egui::IconData::default());
-    let options = eframe::NativeOptions {
-        viewport,
-        centered: true,
-        ..Default::default()
-    };
-    eframe::run_native(
-        &title,
-        options,
-        Box::new(|creation| {
-            style(&creation.egui_ctx);
-            if let Ok(handle) = creation.window_handle()
-                && let RawWindowHandle::Win32(window) = handle.as_raw()
-            {
-                let window = window.hwnd.get() as HWND;
-                match_title_bar(window);
-                set_icon(window);
-            }
-            Ok(Box::new(app))
-        }),
-    )?;
-    Ok(saved.load(Ordering::Relaxed))
-}
-
-/// Gives the title bar the colours of the window (Windows 11; ignored before).
-fn match_title_bar(window: HWND) {
-    let color = |c: Color32| u32::from_le_bytes([c.r(), c.g(), c.b(), 0]);
-    let attributes = [
-        (DWMWA_CAPTION_COLOR, color(BACKGROUND)),
-        (DWMWA_BORDER_COLOR, color(BORDER)),
-        (DWMWA_TEXT_COLOR, color(TEXT)),
-    ];
-    for (attribute, value) in attributes {
-        // SAFETY: the value is a u32 (COLORREF) with matching size.
-        unsafe {
-            DwmSetWindowAttribute(window, attribute as u32, (&raw const value).cast(), 4);
-        }
-    }
-}
-
-/// Uses the icon embedded in the program instead of carrying a second copy of it.
-fn set_icon(window: HWND) {
-    let sizes = [(ICON_SMALL, SM_CXSMICON), (ICON_BIG, SM_CXICON)];
-    for (which, metric) in sizes {
-        // SAFETY: resource 1 is the embedded icon; LR_SHARED icons need no cleanup.
-        unsafe {
-            let side = GetSystemMetricsForDpi(metric, GetDpiForWindow(window));
-            let icon = LoadImageW(
-                GetModuleHandleW(std::ptr::null()),
-                std::ptr::without_provenance(1),
-                IMAGE_ICON,
-                side,
-                side,
-                LR_SHARED,
-            );
-            SendMessageW(window, WM_SETICON, which as usize, icon as isize);
-        }
-    }
-}
-
-/// Segoe UI from Windows, so that no fonts have to be built into the program.
-fn fonts() -> egui::FontDefinitions {
-    let mut fonts = egui::FontDefinitions::empty();
-    // The second font only fills in symbols that the first one lacks.
-    for file in ["segoeui.ttf", "seguisym.ttf"] {
-        let Ok(data) = std::fs::read(format!(r"C:\Windows\Fonts\{file}")) else {
-            continue;
-        };
-        let data = Arc::new(egui::FontData::from_owned(data));
-        fonts.font_data.insert(file.to_owned(), data);
-        for family in fonts.families.values_mut() {
-            family.push(file.to_owned());
-        }
-    }
-    fonts
-}
-
-fn style(context: &egui::Context) {
-    context.set_fonts(fonts());
-    context.set_theme(egui::Theme::Dark);
-    context.global_style_mut(|style| {
-        let v = &mut style.visuals;
-        v.panel_fill = BACKGROUND;
-        v.window_fill = CARD;
-        v.extreme_bg_color = FIELD;
-        v.faint_bg_color = Color32::from_rgb(27, 31, 40);
-        v.override_text_color = Some(TEXT);
-        v.selection.bg_fill = Color32::from_rgb(31, 94, 60);
-        v.selection.stroke = Stroke::new(1.0, ACCENT);
-        for widget in [
-            &mut v.widgets.inactive,
-            &mut v.widgets.hovered,
-            &mut v.widgets.active,
-            &mut v.widgets.open,
-        ] {
-            widget.corner_radius = CornerRadius::same(8);
-        }
-        v.widgets.inactive.weak_bg_fill = CARD;
-        v.widgets.inactive.bg_stroke = Stroke::new(1.0, BORDER);
-        v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
-        // Check marks.
-        v.widgets.inactive.fg_stroke = Stroke::new(2.0, ACCENT);
-        style.spacing.button_padding = egui::vec2(16.0, 8.0);
-        style.spacing.item_spacing = egui::vec2(10.0, 8.0);
-        for font in style.text_styles.values_mut() {
-            font.size *= 1.1;
-        }
-    });
-}
-
+/// What the window edits and stores.
 struct App {
-    page: Page,
     config: Config,
-    /// Problem shown above the buttons.
-    error: Option<String>,
-    saved: Arc<AtomicI32>,
-
-    // Settings page
-    user: String,
-    password: String,
+    exit: i32,
     /// What is stored; `None` if it could not be read.
     stored_login: Option<Option<(String, String)>>,
-    ports: Vec<String>,
-    autostart: bool,
     autostart_before: bool,
-    old_autostart: bool,
+}
 
-    // Sensor page
-    sensors: Option<Sensors>,
-    readings: Vec<Reading>,
-    next_read: Instant,
-    filter: Option<Group>,
+/// The values of the settings window that are not part of the configuration.
+struct Entered {
+    user: String,
+    password: String,
+    autostart: bool,
 }
 
 impl App {
-    fn new(page: Page, saved: Arc<AtomicI32>) -> Result<Self, sysinfo::Error> {
-        // A broken file is reported; saving then replaces it with what the window shows.
-        let (config, mut error) = match Config::load() {
+    /// Also returns what went wrong while loading; saving then replaces a broken file.
+    fn load() -> (Self, Option<String>) {
+        let (config, error) = match Config::load() {
             Ok(config) => (config, None),
             Err(e) => (Config::default(), Some(e)),
         };
-        let mut app = Self {
-            page,
+        let app = Self {
             config,
-            error: None,
-            saved,
-            user: String::new(),
-            password: String::new(),
+            exit: 0,
             stored_login: None,
-            ports: Vec::new(),
-            autostart: false,
             autostart_before: false,
-            old_autostart: false,
-            sensors: None,
-            readings: Vec::new(),
-            next_read: Instant::now(),
-            filter: None,
         };
-        match page {
-            Page::Settings => {
-                match login::saved() {
-                    Ok(stored) => {
-                        if let Some((user, password)) = &stored {
-                            app.user.clone_from(user);
-                            app.password.clone_from(password);
-                        }
-                        app.stored_login = Some(stored);
-                    }
-                    Err(e) => error = Some(e),
-                }
-                app.ports = serialport::available_ports()
-                    .map(|ports| ports.into_iter().map(|p| p.port_name).collect())
-                    .unwrap_or_default();
-                app.autostart = autostart::enabled();
-                app.autostart_before = app.autostart;
-                app.old_autostart = autostart::old_app_enabled();
-            }
-            Page::Sensors => app.sensors = Some(Sensors::open()?),
-        }
-        app.error = error;
-        Ok(app)
+        (app, error)
     }
 
     fn t<'a>(&self, german: &'a str, english: &'a str) -> &'a str {
         self.config.language.pick(german, english)
     }
 
-    fn save(&mut self) -> Result<(), String> {
+    /// Saves the configuration and, for the settings window, login and autostart.
+    fn save(&mut self, entered: Option<&Entered>) -> Result<(), String> {
         self.config.validate()?;
-        if self.page == Page::Settings {
-            let login = match (self.user.as_str(), self.password.as_str()) {
+        if let Some(entered) = entered {
+            let login = match (entered.user.as_str(), entered.password.as_str()) {
                 // Empty fields mean "no login" only if we know what we would remove.
                 ("", "") if self.stored_login.is_some() => None,
                 ("", _) | (_, "") => {
@@ -288,394 +117,645 @@ impl App {
         }
         self.config.save()?;
         // The app has to reload even if switching the autostart fails afterwards.
-        self.saved.store(SAVED, Ordering::Relaxed);
-        if self.autostart != self.autostart_before {
-            if self.autostart {
+        self.exit = SAVED;
+        if let Some(entered) = entered
+            && entered.autostart != self.autostart_before
+        {
+            if entered.autostart {
                 autostart::enable()?;
-                self.saved.store(INSTALLED, Ordering::Relaxed);
+                self.exit = INSTALLED;
             } else {
                 autostart::disable()?;
             }
-            self.autostart_before = self.autostart;
+            self.autostart_before = entered.autostart;
         }
         Ok(())
     }
+}
 
-    fn buttons(&mut self, ui: &mut egui::Ui) {
-        let save = egui::Button::new(
-            RichText::new(self.t("Speichern", "Save"))
-                .color(BACKGROUND)
-                .strong(),
-        )
-        .fill(ACCENT);
-        // Right-to-left layouts place the first widget at the far right.
-        if ui.add(save).clicked() {
-            match self.save() {
-                Ok(()) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
-                Err(e) => self.error = Some(e),
-            }
-        }
-        if ui.button(self.t("Abbrechen", "Cancel")).clicked() {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-        }
-        if self.page == Page::Sensors && ui.button(self.t("Standardwerte", "Defaults")).clicked() {
-            self.config.sensors.clear();
+/// Buttons and error line at the bottom of both windows.
+struct Footer {
+    error: HWND,
+    defaults: Option<HWND>,
+    cancel: HWND,
+    save: HWND,
+}
+
+impl Footer {
+    fn new(window: &Window, app: &App, defaults: bool) -> Self {
+        let button = |text: &str, id, look| {
+            window.button(window.handle, text, [0, 0, 120, 34], id, look, BACKGROUND)
+        };
+        let defaults = defaults.then(|| {
+            button(
+                app.t("Standardwerte", "Defaults"),
+                DEFAULTS,
+                Look::Secondary,
+            )
+        });
+        let cancel = button(app.t("Abbrechen", "Cancel"), CANCEL, Look::Secondary);
+        let save = button(app.t("Speichern", "Save"), SAVE, Look::Primary);
+        let error = window.label(
+            window.handle,
+            "",
+            [20, 0, 100, 36],
+            Font::Small,
+            ERROR,
+            BACKGROUND,
+        );
+        Self {
+            error,
+            defaults,
+            cancel,
+            save,
         }
     }
 
-    fn settings(&mut self, ui: &mut egui::Ui) {
-        let language = self.config.language;
-        let t = move |german: &'static str, english: &'static str| language.pick(german, english);
-        heading(ui, "PulseMQTT", t("Einstellungen", "Settings"));
+    fn layout(&self, window: &Window) {
+        let (width, height) = window.size();
+        let y = height - FOOTER + 16;
+        window.move_to(self.save, [width - 140, y, 120, 34]);
+        window.move_to(self.cancel, [width - 270, y, 120, 34]);
+        let mut left = width - 270;
+        if let Some(defaults) = self.defaults {
+            left -= 140;
+            window.move_to(defaults, [left, y, 130, 34]);
+        }
+        window.move_to(self.error, [20, y - 2, left - 30, 40]);
+    }
+}
 
-        card(ui, "MQTT", |ui| {
-            row(ui, t("MQTT senden", "Send via MQTT"), |ui, label| {
-                switch(ui, &mut self.config.mqtt_enabled, label);
-            });
-            row(ui, "Port", |ui, _| {
-                ui.add(egui::DragValue::new(&mut self.config.port).range(1..=u16::MAX));
-            });
-            row(ui, "Topic", |ui, _| {
-                field(ui, &mut self.config.topic, false);
-            });
-            row(ui, t("Benutzername", "User name"), |ui, _| {
-                field(ui, &mut self.user, false);
-            });
-            row(ui, t("Passwort", "Password"), |ui, _| {
-                field(ui, &mut self.password, true);
-            });
-            if std::env::var_os("PULSEMQTT_USER").is_some() {
-                ui.colored_label(
-                    MUTED,
-                    t(
-                        "Die Umgebungsvariablen PULSEMQTT_* haben Vorrang.",
-                        "The PULSEMQTT_* environment variables take precedence.",
-                    ),
-                );
-            } else if self.user.is_empty() && self.password.is_empty() {
-                ui.colored_label(
-                    ERROR,
-                    t(
-                        "Ohne Login kann sich jeder im Netzwerk verbinden.",
-                        "Without a login everyone on the network can connect.",
-                    ),
-                );
-            }
-        });
+/// Shows the window until it is closed. Returns the exit code for the process.
+pub fn run(page: Page) -> Result<i32, Box<dyn std::error::Error>> {
+    // SAFETY: plain call before any window exists.
+    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    match page {
+        Page::Settings => settings(),
+        Page::Sensors => sensors(),
+    }
+}
 
-        card(ui, t("SERIELL / USB", "SERIAL / USB"), |ui| {
-            row(
-                ui,
-                t("USB/Seriell senden", "Send via USB/serial"),
-                |ui, label| {
-                    switch(ui, &mut self.config.serial_enabled, label);
-                },
-            );
-            row(ui, t("Serieller Port", "Serial port"), |ui, _| {
-                egui::ComboBox::from_id_salt("serial_port")
-                    .selected_text(match self.config.serial_port.as_str() {
-                        "" => "-",
-                        port => port,
-                    })
-                    .show_ui(ui, |ui| {
-                        for port in &self.ports {
-                            ui.selectable_value(&mut self.config.serial_port, port.clone(), port);
-                        }
-                    });
-            });
-            row(ui, t("Verbindungsart", "Connection type"), |ui, _| {
-                let name = |mode| match mode {
-                    SerialMode::UsbSerialJtag => "USB-Serial/JTAG (ESP32-C3)",
-                    SerialMode::Uart0 => "UART0 (USB-Seriell-Chip)",
-                };
-                egui::ComboBox::from_id_salt("serial_mode")
-                    .selected_text(name(self.config.serial_mode))
-                    .show_ui(ui, |ui| {
-                        for mode in [SerialMode::UsbSerialJtag, SerialMode::Uart0] {
-                            ui.selectable_value(&mut self.config.serial_mode, mode, name(mode));
-                        }
-                    });
-            });
-            row(ui, t("Update-Intervall", "Update interval"), |ui, _| {
-                ui.add(
-                    egui::DragValue::new(&mut self.config.interval_seconds)
-                        .range(0.5..=60.0)
-                        .speed(0.1)
-                        .fixed_decimals(1)
-                        .suffix(" s"),
-                );
-            });
-        });
+/// A card with a title and rows of "label on the left, control on the right".
+struct Card<'a> {
+    window: &'a Window,
+    panel: HWND,
+    /// Top of the next row.
+    y: i32,
+}
 
-        card(ui, t("ALLGEMEIN", "GENERAL"), |ui| {
-            row(
-                ui,
-                t("Mit Windows starten", "Start with Windows"),
-                |ui, label| {
-                    if autostart::possible() {
-                        switch(ui, &mut self.autostart, label);
-                    } else {
-                        ui.colored_label(
-                            MUTED,
-                            t(
-                                "dafür als Administrator neu starten (Tray-Menü)",
-                                "restart as administrator first (tray menu)",
-                            ),
-                        );
-                    }
-                },
-            );
-            if self.autostart && self.old_autostart {
-                ui.colored_label(
-                    ERROR,
-                    t(
-                        "Die alte PulseMQTT-App startet auch noch mit Windows (gleicher Port).",
-                        "The old PulseMQTT app also still starts with Windows (same port).",
-                    ),
-                );
-            }
-            row(
-                ui,
-                t("Automatische Updates", "Automatic updates"),
-                |ui, label| {
-                    if update::configured() {
-                        switch(ui, &mut self.config.auto_update, label);
-                    } else {
-                        ui.colored_label(MUTED, t("noch nicht verfügbar", "not available yet"));
-                    }
-                },
-            );
-            row(ui, t("Sprache", "Language"), |ui, _| {
-                let name = |l| match l {
-                    Language::Auto => t("Automatisch", "Automatic"),
-                    Language::De => "Deutsch",
-                    Language::En => "English",
-                };
-                egui::ComboBox::from_id_salt("language")
-                    .selected_text(name(self.config.language))
-                    .show_ui(ui, |ui| {
-                        for l in [Language::Auto, Language::De, Language::En] {
-                            ui.selectable_value(&mut self.config.language, l, name(l));
-                        }
-                    });
-            });
-        });
+impl Card<'_> {
+    const LEFT: i32 = 20;
+    const WIDTH: i32 = 480;
+    const RIGHT: i32 = Self::LEFT + Self::WIDTH - 16;
 
-        ui.label(
-            RichText::new(t(
-                "Topic muss mit der Firmware-Konfiguration übereinstimmen. Über USB werden \
-                 dieselben JSON-Daten als Textzeilen (115200 Baud) gesendet.",
-                "The topic must match the firmware configuration. USB sends the same JSON \
-                 data as text lines (115200 baud).",
-            ))
-            .color(MUTED)
-            .small(),
+    fn new<'a>(window: &'a Window, panel: HWND, y: i32, rows: i32, title: &str) -> Card<'a> {
+        window.card(
+            panel,
+            [Self::LEFT, y, Self::WIDTH, 38 + rows * 36 + 6],
+            CARD,
+        );
+        window.label(
+            panel,
+            title,
+            [36, y + 12, 200, 18],
+            Font::Small,
+            MUTED,
+            CARD,
+        );
+        Card {
+            window,
+            panel,
+            y: y + 38,
+        }
+    }
+
+    /// Adds the label and returns the area for a control of this width.
+    fn row(&mut self, label: &str, width: i32) -> [i32; 4] {
+        self.window.label(
+            self.panel,
+            label,
+            [36, self.y + 7, 220, 20],
+            Font::Normal,
+            TEXT,
+            CARD,
+        );
+        let area = [Self::RIGHT - width, self.y + 2, width, 30];
+        self.y += 36;
+        area
+    }
+
+    fn switch(&mut self, label: &str, on: bool) -> HWND {
+        let [x, y, width, _] = self.row(label, 44);
+        let control = self.window.button(
+            self.panel,
+            label,
+            [x, y + 3, width, 24],
+            0,
+            Look::Switch,
+            CARD,
+        );
+        ui::set_checked(control, on);
+        control
+    }
+
+    fn edit(&mut self, label: &str, text: &str, width: i32, style: i32, limit: usize) -> HWND {
+        let area = self.row(label, width);
+        self.window.edit(self.panel, text, area, style, limit)
+    }
+
+    fn combo(&mut self, label: &str, items: &[&str], at: Option<usize>, width: i32) -> HWND {
+        let [x, y, width, _] = self.row(label, width);
+        self.window
+            .combo(self.panel, items, at, [x, y + 2, width, 28])
+    }
+
+    /// A row whose control is replaced by an explanation.
+    fn note(&mut self, label: &str, note: &str) {
+        let [x, y, width, _] = self.row(label, 270);
+        self.window.label(
+            self.panel,
+            note,
+            [x, y + 5, width, 20],
+            Font::Small,
+            MUTED,
+            CARD,
         );
     }
 
-    fn sensor_page(&mut self, ui: &mut egui::Ui) {
-        let now = Instant::now();
-        let interval = Duration::from_secs_f64(self.config.interval_seconds.clamp(0.5, 60.0));
-        if now >= self.next_read
-            && let Some(sensors) = &mut self.sensors
-        {
-            self.readings = sensors.read();
-            self.next_read = now + interval;
-        }
-        ui.ctx().request_repaint_after(interval);
+    /// A line across the card, for hints.
+    fn hint(&mut self, text: &str, color: u32) -> HWND {
+        let control = self.window.label(
+            self.panel,
+            text,
+            [36, self.y + 4, Self::WIDTH - 32, 20],
+            Font::Small,
+            color,
+            CARD,
+        );
+        self.y += 28;
+        control
+    }
+}
 
-        let language = self.config.language;
-        let t = move |german: &'static str, english: &'static str| language.pick(german, english);
-        heading(
-            ui,
-            t("Sensoren konfigurieren", "Configure sensors"),
+fn settings() -> Result<i32, Box<dyn std::error::Error>> {
+    let (mut app, mut problem) = App::load();
+    let mut user = String::new();
+    let mut password = String::new();
+    match login::saved() {
+        Ok(stored) => {
+            if let Some((u, p)) = &stored {
+                user.clone_from(u);
+                password.clone_from(p);
+            }
+            app.stored_login = Some(stored);
+        }
+        Err(e) => problem = Some(e),
+    }
+    let mut ports: Vec<String> = serialport::available_ports()
+        .map(|ports| ports.into_iter().map(|p| p.port_name).collect())
+        .unwrap_or_default();
+    let config = app.config.clone();
+    if !config.serial_port.is_empty() && !ports.contains(&config.serial_port) {
+        ports.push(config.serial_port.clone());
+    }
+    app.autostart_before = autostart::enabled();
+    let old_autostart = autostart::old_app_enabled();
+    let from_environment = std::env::var_os("PULSEMQTT_USER").is_some();
+    let language = config.language;
+    let t = move |german: &'static str, english: &'static str| language.pick(german, english);
+
+    let window = Window::new(
+        t("PulseMQTT - Einstellungen", "PulseMQTT - Settings"),
+        540,
+        900,
+    )?;
+    let panel = window.panel([0, 0, 540, 900 - FOOTER], BACKGROUND);
+    window.label(
+        panel,
+        "PulseMQTT",
+        [20, 14, 400, 34],
+        Font::Large,
+        TEXT,
+        BACKGROUND,
+    );
+    window.label(
+        panel,
+        t("Einstellungen", "Settings"),
+        [20, 48, 400, 20],
+        Font::Normal,
+        MUTED,
+        BACKGROUND,
+    );
+
+    // The two hints share the place of a sixth row.
+    let mut card = Card::new(&window, panel, 80, 6, "MQTT");
+    let mqtt = card.switch(t("MQTT senden", "Send via MQTT"), config.mqtt_enabled);
+    let port = card.edit("Port", &config.port.to_string(), 90, ES_NUMBER, 5);
+    let topic = card.edit("Topic", &config.topic, 230, 0, 200);
+    let user = card.edit(t("Benutzername", "User name"), &user, 230, 0, 100);
+    let password = card.edit(t("Passwort", "Password"), &password, 230, ES_PASSWORD, 200);
+    let hint_y = card.y;
+    let environment_hint = card.hint(
+        t(
+            "Die Umgebungsvariablen PULSEMQTT_* haben Vorrang.",
+            "The PULSEMQTT_* environment variables take precedence.",
+        ),
+        MUTED,
+    );
+    card.y = hint_y;
+    let open_hint = card.hint(
+        t(
+            "Ohne Login kann sich jeder im Netzwerk verbinden.",
+            "Without a login everyone on the network can connect.",
+        ),
+        ERROR,
+    );
+
+    let mut y = card.y + 24;
+    let mut card = Card::new(&window, panel, y, 4, t("SERIELL / USB", "SERIAL / USB"));
+    let serial = card.switch(
+        t("USB/Seriell senden", "Send via USB/serial"),
+        config.serial_enabled,
+    );
+    let names: Vec<&str> = ports.iter().map(String::as_str).collect();
+    let at = ports.iter().position(|p| *p == config.serial_port);
+    let serial_port = card.combo(t("Serieller Port", "Serial port"), &names, at, 110);
+    let at = MODES.iter().position(|m| *m == config.serial_mode);
+    let mode = card.combo(
+        t("Verbindungsart", "Connection type"),
+        &["USB-Serial/JTAG (ESP32-C3)", "UART0 (USB-Seriell-Chip)"],
+        at,
+        240,
+    );
+    let interval = card.edit(
+        t("Update-Intervall (s)", "Update interval (s)"),
+        &format!("{:.1}", config.interval_seconds),
+        90,
+        0,
+        4,
+    );
+
+    y = card.y + 18;
+    let mut card = Card::new(&window, panel, y, 4, t("ALLGEMEIN", "GENERAL"));
+    let autostart = if autostart::possible() {
+        Some(card.switch(
+            t("Mit Windows starten", "Start with Windows"),
+            app.autostart_before,
+        ))
+    } else {
+        card.note(
+            t("Mit Windows starten", "Start with Windows"),
             t(
-                "Wähle die Sensoren, die veröffentlicht werden",
-                "Select the sensors to publish",
+                "als Administrator neu starten (Tray-Menü)",
+                "restart as administrator (tray menu)",
             ),
         );
-        let selected = self
-            .readings
-            .iter()
-            .filter(|r| self.config.sensor(&r.id).enabled)
-            .count();
-        ui.columns(2, |columns| {
-            card(&mut columns[0], t("AUSGEWÄHLT", "SELECTED"), |ui| {
-                ui.label(
-                    RichText::new(format!("{selected} {}", t("Sensoren", "sensors"))).size(26.0),
-                );
-                // The ESP32 firmware keeps at most this many values.
-                if selected > 24 {
-                    ui.colored_label(
-                        ERROR,
-                        t("Das Display nutzt nur 24.", "The display uses only 24."),
-                    );
-                }
-            });
-            card(&mut columns[1], t("AKTUALISIERUNG", "UPDATE"), |ui| {
-                ui.label(RichText::new(format!("{:.1} s", interval.as_secs_f64())).size(26.0));
-            });
-        });
-        ui.horizontal(|ui| {
-            let filters = [
-                (None, t("Alle", "All")),
-                (Some(Group::Cpu), "CPU"),
-                (Some(Group::Gpu), "GPU"),
-                (Some(Group::Memory), t("Speicher", "Memory")),
-                (Some(Group::Drive), t("Laufwerke", "Drives")),
-            ];
-            for (group, name) in filters {
-                ui.selectable_value(&mut self.filter, group, name);
-            }
-        });
-
-        // Only the table scrolls; the summary and the filters stay in place.
-        card(ui, "", |ui| {
-            egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-                egui::Grid::new("sensors")
-                    .num_columns(6)
-                    .striped(true)
-                    .spacing([24.0, 12.0])
-                    .show(ui, |ui| {
-                        for title in [
-                            "",
-                            "HARDWARE",
-                            t("TYP", "TYPE"),
-                            "SENSOR",
-                            t("MQTT-SCHLÜSSEL", "MQTT KEY"),
-                            t("AKTUELL", "CURRENT"),
-                        ] {
-                            ui.colored_label(MUTED, title);
-                        }
-                        ui.end_row();
-                        for r in &self.readings {
-                            if self.filter.is_some_and(|g| g != r.group) {
-                                continue;
-                            }
-                            let before = self.config.sensor(&r.id);
-                            let mut sensor: Sensor = before.clone();
-                            let name = name(&r.id, language);
-                            ui.checkbox(&mut sensor.enabled, "").widget_info(|| {
-                                egui::WidgetInfo::selected(
-                                    egui::Role::CheckBox,
-                                    true,
-                                    before.enabled,
-                                    &name,
-                                )
-                            });
-                            ui.colored_label(MUTED, hardware(r.group, language));
-                            ui.colored_label(MUTED, kind(r.kind, language));
-                            ui.label(&name);
-                            ui.add_sized(
-                                [220.0, 30.0],
-                                egui::TextEdit::singleline(&mut sensor.key).char_limit(MAX_KEY),
-                            );
-                            ui.label(match r.value {
-                                Some(v) => format!("{v:.1} {}", r.unit()),
-                                None => "n/a".to_owned(),
-                            });
-                            ui.end_row();
-                            if sensor != before {
-                                self.config.sensors.insert(r.id.clone(), sensor);
-                            }
-                        }
-                    });
-            });
-        });
-    }
-}
-
-impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let margin = Frame::new().fill(BACKGROUND).inner_margin(Margin::same(20));
-        egui::Panel::bottom("buttons").frame(margin).show(ui, |ui| {
-            if let Some(error) = &self.error {
-                ui.colored_label(ERROR, error);
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| self.buttons(ui));
-        });
-        egui::CentralPanel::default()
-            .frame(margin)
-            .show(ui, |ui| match self.page {
-                Page::Settings => {
-                    egui::ScrollArea::both()
-                        .auto_shrink(false)
-                        .show(ui, |ui| self.settings(ui));
-                }
-                Page::Sensors => self.sensor_page(ui),
-            });
-    }
-}
-
-fn heading(ui: &mut egui::Ui, title: &str, subtitle: &str) {
-    ui.label(RichText::new(title).size(24.0).strong());
-    ui.colored_label(MUTED, subtitle);
-    ui.add_space(8.0);
-}
-
-fn card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
-    Frame::new()
-        .fill(CARD)
-        .stroke(Stroke::new(1.0, BORDER))
-        .corner_radius(CornerRadius::same(14))
-        .inner_margin(Margin::same(18))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            if !title.is_empty() {
-                ui.label(RichText::new(title).color(MUTED).small().strong());
-            }
-            content(ui);
-        });
-    ui.add_space(4.0);
-}
-
-/// Label on the left, control on the right. The label id names the control for screen readers.
-fn row(ui: &mut egui::Ui, label: &str, control: impl FnOnce(&mut egui::Ui, &str)) {
-    ui.horizontal(|ui| {
-        ui.set_min_height(28.0);
-        let id = ui.label(label).id;
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.scope(|ui| control(ui, label)).response.labelled_by(id);
-        });
-    });
-}
-
-fn field(ui: &mut egui::Ui, text: &mut String, password: bool) {
-    ui.add(
-        egui::TextEdit::singleline(text)
-            .password(password)
-            .desired_width(220.0)
-            .margin(Margin::symmetric(10, 8)),
-    );
-}
-
-/// An on/off switch.
-fn switch(ui: &mut egui::Ui, on: &mut bool, label: &str) {
-    let (area, mut response) = ui.allocate_exact_size(egui::vec2(42.0, 24.0), egui::Sense::click());
-    if response.clicked() {
-        *on = !*on;
-        response.mark_changed();
-    }
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::Role::CheckBox, ui.is_enabled(), *on, label)
-    });
-    let position = ui.ctx().animate_bool(response.id, *on);
-    let painter = ui.painter();
-    let fill = if *on { ACCENT } else { BORDER };
-    painter.rect_filled(area, 12.0, fill);
-    if response.has_focus() {
-        painter.rect_stroke(
-            area,
-            12.0,
-            Stroke::new(1.5, TEXT),
-            egui::StrokeKind::Outside,
+        None
+    };
+    let auto_update = if update::configured() {
+        Some(card.switch(
+            t("Automatische Updates", "Automatic updates"),
+            config.auto_update,
+        ))
+    } else {
+        card.note(
+            t("Automatische Updates", "Automatic updates"),
+            t("noch nicht verfügbar", "not available yet"),
         );
+        None
+    };
+    let at = LANGUAGES.iter().position(|l| *l == config.language);
+    let language_box = card.combo(
+        t("Sprache", "Language"),
+        &[t("Automatisch", "Automatic"), "Deutsch", "English"],
+        at,
+        140,
+    );
+    let old_hint = card.hint(
+        t(
+            "Die alte PulseMQTT-App startet auch noch mit Windows (gleicher Port).",
+            "The old PulseMQTT app also still starts with Windows (same port).",
+        ),
+        ERROR,
+    );
+
+    y = card.y + 18;
+    window.label(
+        panel,
+        t(
+            "Topic muss mit der Firmware-Konfiguration übereinstimmen. Über USB werden \
+             dieselben JSON-Daten als Textzeilen (115200 Baud) gesendet.",
+            "The topic must match the firmware configuration. USB sends the same JSON data \
+             as text lines (115200 baud).",
+        ),
+        [20, y, Card::WIDTH, 40],
+        Font::Small,
+        MUTED,
+        BACKGROUND,
+    );
+    let content = y + 52;
+
+    let footer = Footer::new(&window, &app, false);
+    if let Some(problem) = &problem {
+        ui::set_text(footer.error, problem);
     }
-    let x = egui::lerp(area.left() + 12.0..=area.right() - 12.0, position);
-    let knob = if *on { BACKGROUND } else { MUTED };
-    painter.circle_filled(egui::pos2(x, area.center().y), 8.0, knob);
+    let hints = |window_state: &App| {
+        let empty = ui::text(user).is_empty() && ui::text(password).is_empty();
+        ui::show(environment_hint, from_environment);
+        ui::show(open_hint, !from_environment && empty);
+        let starts = autostart.map_or(window_state.autostart_before, ui::checked);
+        ui::show(old_hint, starts && old_autostart);
+    };
+    let layout = || {
+        let (width, height) = window.size();
+        window.move_to(panel, [0, 0, width, height - FOOTER]);
+        footer.layout(&window);
+    };
+    layout();
+    window.set_content_height(panel, content);
+    hints(&app);
+
+    window.run(panel, None, |event| {
+        match event {
+            Event::Command(SAVE, BN_CLICKED) => {
+                let config = &mut app.config;
+                config.mqtt_enabled = ui::checked(mqtt);
+                // Invalid input becomes 0, which validation rejects with a message.
+                config.port = ui::text(port).parse().unwrap_or(0);
+                config.topic = ui::text(topic);
+                config.serial_enabled = ui::checked(serial);
+                config.serial_port = ui::selected(serial_port)
+                    .and_then(|i| ports.get(i).cloned())
+                    .unwrap_or_default();
+                config.serial_mode = ui::selected(mode).map_or(config.serial_mode, |i| MODES[i]);
+                config.interval_seconds =
+                    ui::text(interval).replace(',', ".").parse().unwrap_or(0.0);
+                if let Some(control) = auto_update {
+                    config.auto_update = ui::checked(control);
+                }
+                config.language =
+                    ui::selected(language_box).map_or(config.language, |i| LANGUAGES[i]);
+                let entered = Entered {
+                    user: ui::text(user),
+                    password: ui::text(password),
+                    autostart: autostart.map_or(app.autostart_before, ui::checked),
+                };
+                match app.save(Some(&entered)) {
+                    Ok(()) => return false,
+                    Err(e) => ui::set_text(footer.error, &e),
+                }
+            }
+            Event::Command(CANCEL, BN_CLICKED) | Event::Close => return false,
+            Event::Command(ui::RESIZED, _) => layout(),
+            Event::Command(0, BN_CLICKED | EN_CHANGE) => hints(&app),
+            _ => {}
+        }
+        true
+    });
+    Ok(app.exit)
 }
 
+/// The controls of one sensor in the table.
+struct Row {
+    id: String,
+    group: Group,
+    check: HWND,
+    texts: [HWND; 3],
+    key: HWND,
+    value: HWND,
+}
+
+impl Row {
+    /// Places the row at `y` of the table, or hides it.
+    fn place(&self, window: &Window, panel: HWND, y: i32, visible: bool) {
+        window.move_to(self.check, [16, y + 7, 20, 20]);
+        for (control, (x, width)) in self.texts.iter().zip([(52, 90), (150, 105), (265, 175)]) {
+            window.move_to(*control, [x, y + 7, width, 20]);
+            ui::show(*control, visible);
+        }
+        window.place_field(panel, self.key, [450, y + 2, 220, 30], visible);
+        window.move_to(self.value, [690, y + 7, 120, 20]);
+        ui::show(self.check, visible);
+        ui::show(self.value, visible);
+    }
+}
+
+fn value_text(reading: &Reading) -> String {
+    match reading.value {
+        Some(v) => format!("{v:.1} {}", reading.unit()),
+        None => "n/a".to_owned(),
+    }
+}
+
+fn sensors() -> Result<i32, Box<dyn std::error::Error>> {
+    let (mut app, problem) = App::load();
+    let mut source = Sensors::open()?;
+    let readings = source.read();
+    let language = app.config.language;
+    let t = move |german: &'static str, english: &'static str| language.pick(german, english);
+
+    let window = Window::new(t("PulseMQTT - Sensoren", "PulseMQTT - Sensors"), 900, 680)?;
+    let main = window.handle;
+    let label =
+        |text: &str, area, font, color| window.label(main, text, area, font, color, BACKGROUND);
+    label(
+        t("Sensoren konfigurieren", "Configure sensors"),
+        [20, 14, 600, 34],
+        Font::Large,
+        TEXT,
+    );
+    label(
+        t(
+            "Wähle die Sensoren, die veröffentlicht werden",
+            "Select the sensors to publish",
+        ),
+        [20, 48, 600, 20],
+        Font::Normal,
+        MUTED,
+    );
+    let summary = |x: i32, title: &str| {
+        window.card(main, [x, 80, 420, 74], CARD);
+        window.label(main, title, [x + 16, 90, 200, 18], Font::Small, MUTED, CARD);
+        window.label(main, "", [x + 16, 110, 180, 36], Font::Large, TEXT, CARD)
+    };
+    let count = summary(20, t("AUSGEWÄHLT", "SELECTED"));
+    // The ESP32 firmware keeps at most this many values.
+    let too_many = window.label(
+        main,
+        t("Das Display nutzt nur 24.", "The display uses only 24."),
+        [220, 120, 200, 18],
+        Font::Small,
+        ERROR,
+        CARD,
+    );
+    let refresh = summary(460, t("AKTUALISIERUNG", "UPDATE"));
+    let interval = app.config.interval_seconds.clamp(0.5, 60.0);
+    ui::set_text(refresh, &format!("{interval:.1} s"));
+
+    let names = [
+        t("Alle", "All"),
+        "CPU",
+        "GPU",
+        t("Speicher", "Memory"),
+        t("Laufwerke", "Drives"),
+    ];
+    let filters: Vec<HWND> = (0u16..)
+        .zip(names)
+        .map(|(i, name)| {
+            let area = [20 + i32::from(i) * 108, 166, 100, 30];
+            window.button(main, name, area, FILTER + i, Look::Chip, BACKGROUND)
+        })
+        .collect();
+    ui::set_checked(filters[0], true);
+    label(
+        t("Alle erkannten anzeigen", "Show all detected"),
+        [640, 171, 180, 20],
+        Font::Normal,
+        TEXT,
+    );
+    // Created after its label, which names it for screen readers.
+    let show_all = window.button(
+        main,
+        t("Alle erkannten anzeigen", "Show all detected"),
+        [836, 169, 44, 24],
+        SHOW_ALL,
+        Look::Switch,
+        BACKGROUND,
+    );
+    for (title, x) in [
+        ("HARDWARE", 72),
+        (t("TYP", "TYPE"), 170),
+        ("SENSOR", 285),
+        (t("MQTT-SCHLÜSSEL", "MQTT KEY"), 470),
+        (t("AKTUELL", "CURRENT"), 710),
+    ] {
+        label(title, [x, TABLE - 24, 150, 18], Font::Small, MUTED);
+    }
+
+    let panel = window.panel([20, TABLE, 860, 300], CARD);
+    let mut ordered: Vec<&Reading> = readings.iter().collect();
+    ordered.sort_by_key(|r| FILTERS.iter().position(|f| *f == Some(r.group)));
+    let rows: Vec<Row> = ordered
+        .into_iter()
+        .map(|reading| {
+            let sensor = app.config.sensor(&reading.id);
+            let name = name(&reading.id, language);
+            let text = |text: &str, color| {
+                window.label(panel, text, [0, 0, 10, 10], Font::Normal, color, CARD)
+            };
+            let check = window.button(panel, &name, [0, 0, 20, 20], 0, Look::CheckBox, CARD);
+            ui::set_checked(check, sensor.enabled);
+            let hardware = text(hardware(reading.group, language), MUTED);
+            let kind = text(kind(reading.kind, language), MUTED);
+            // Right before the field, so that it names the field for screen readers.
+            let title = text(&name, TEXT);
+            let key = window.edit(panel, &sensor.key, [0, 0, 220, 30], 0, MAX_KEY);
+            let value = text(&value_text(reading), TEXT);
+            Row {
+                id: reading.id.clone(),
+                group: reading.group,
+                check,
+                texts: [hardware, kind, title],
+                key,
+                value,
+            }
+        })
+        .collect();
+
+    let footer = Footer::new(&window, &app, true);
+    if let Some(problem) = &problem {
+        ui::set_text(footer.error, problem);
+    }
+    let layout = || {
+        let (width, height) = window.size();
+        window.move_to(panel, [20, TABLE, width - 40, height - TABLE - FOOTER]);
+        footer.layout(&window);
+    };
+    let arrange = || {
+        let filter = filters
+            .iter()
+            .position(|f| ui::checked(*f))
+            .and_then(|i| FILTERS[i]);
+        let all = ui::checked(show_all);
+        // Selected extra sensors stay visible when the others are hidden.
+        let shown = |row: &Row| {
+            filter.is_none_or(|group| group == row.group)
+                && (all || !config::extra(&row.id) || ui::checked(row.check))
+        };
+        let visible: Vec<bool> = rows.iter().map(shown).collect();
+        let height = 8 + 36 * visible.iter().filter(|v| **v).count() as i32;
+        // Back to the top before the rows get their new places.
+        window.set_content_height(panel, height);
+        let mut y = 4;
+        for (row, visible) in rows.iter().zip(visible) {
+            row.place(&window, panel, y, visible);
+            if visible {
+                y += 36;
+            }
+        }
+        // The field frames have to be painted at their new places.
+        ui::repaint(panel);
+    };
+    let counted = || {
+        let selected = rows.iter().filter(|r| ui::checked(r.check)).count();
+        ui::set_text(count, &format!("{selected} {}", t("Sensoren", "sensors")));
+        ui::show(too_many, selected > 24);
+    };
+    layout();
+    arrange();
+    counted();
+
+    let milliseconds = (interval * 1000.0) as u32;
+    window.run(panel, Some(milliseconds), |event| {
+        match event {
+            Event::Timer => {
+                for reading in source.read() {
+                    if let Some(row) = rows.iter().find(|r| r.id == reading.id) {
+                        ui::set_text(row.value, &value_text(&reading));
+                    }
+                }
+            }
+            Event::Command(SAVE, BN_CLICKED) => {
+                for row in &rows {
+                    let sensor = Sensor {
+                        enabled: ui::checked(row.check),
+                        key: ui::text(row.key),
+                    };
+                    if sensor != app.config.sensor(&row.id) {
+                        app.config.sensors.insert(row.id.clone(), sensor);
+                    }
+                }
+                match app.save(None) {
+                    Ok(()) => return false,
+                    Err(e) => ui::set_text(footer.error, &e),
+                }
+            }
+            Event::Command(CANCEL, BN_CLICKED) | Event::Close => return false,
+            Event::Command(DEFAULTS, BN_CLICKED) => {
+                app.config.sensors.clear();
+                for row in &rows {
+                    let sensor = app.config.sensor(&row.id);
+                    ui::set_checked(row.check, sensor.enabled);
+                    ui::set_text(row.key, &sensor.key);
+                }
+                counted();
+            }
+            Event::Command(id, BN_CLICKED)
+                if id == SHOW_ALL || (FILTER..FILTER + 5).contains(&id) =>
+            {
+                arrange();
+            }
+            Event::Command(ui::RESIZED, _) => {
+                layout();
+                ui::repaint(main);
+            }
+            Event::Command(0, BN_CLICKED) => counted(),
+            _ => {}
+        }
+        true
+    });
+    Ok(app.exit)
+}
 fn hardware(group: Group, language: Language) -> &'static str {
     match group {
         Group::Cpu => "CPU",
@@ -693,6 +773,7 @@ fn kind(kind: Kind, language: Language) -> &'static str {
         Kind::Temperature => ("Temperatur", "Temperature"),
         Kind::Fan => ("Lüfter", "Fan"),
         Kind::Data => ("Daten", "Data"),
+        Kind::Voltage => ("Spannung", "Voltage"),
     };
     language.pick(german, english)
 }
@@ -706,6 +787,13 @@ fn name(id: &str, language: Language) -> String {
     if let Some(header) = id.strip_prefix("fan_header_") {
         return format!("{} {header}", t("Lüfteranschluss", "Fan header"));
     }
+    if let Some(number) = id.strip_prefix("cpu_load_") {
+        return format!("{} {number}", t("Prozessor", "Processor"));
+    }
+    if let Some(letter) = id.strip_prefix("disk_usage_") {
+        let letter = letter.to_uppercase();
+        return format!("{} {letter}:", t("Belegung", "Usage"));
+    }
     match id {
         "cpu_load" | "gpu_load" => t("Auslastung", "Load"),
         "cpu_power" | "gpu_power" => t("Leistungsaufnahme", "Power draw"),
@@ -716,6 +804,12 @@ fn name(id: &str, language: Language) -> String {
         "gpu_fan_percent" => t("Lüfter in Prozent", "Fan percent"),
         "memory_available" => t("Verfügbar", "Available"),
         "memory_used" => t("Belegt", "Used"),
+        "memory_total" => t("Gesamt", "Total"),
+        "gpu_hotspot_temp" => t("Hotspot-Temperatur", "Hotspot temperature"),
+        "gpu_memory_clock" => t("Speichertakt", "Memory clock"),
+        "gpu_memory_used" => t("Grafikspeicher belegt", "Memory used"),
+        "gpu_voltage" => t("Spannung", "Voltage"),
+        "gpu_board_power" => t("Leistung ganze Karte", "Board power"),
         other => other,
     }
     .to_owned()

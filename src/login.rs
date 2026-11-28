@@ -1,24 +1,25 @@
-//! MQTT login: `login.dat` next to the executable, holding "user\npassword" encrypted
-//! with DPAPI for the current Windows user. Written by install.ps1 or the settings window.
+//! MQTT login: `login.dat` in the data folder, holding "user\npassword" encrypted with
+//! DPAPI for the current Windows user. Written by install.ps1 or the settings window.
 
 use std::{io, path::PathBuf, ptr};
 use windows_sys::Win32::{
     Foundation::LocalFree,
-    Security::Cryptography::{CRYPT_INTEGER_BLOB, CryptProtectData, CryptUnprotectData},
+    Security::Cryptography::{
+        CRYPT_INTEGER_BLOB, CRYPT_STRING_BASE64, CryptProtectData, CryptStringToBinaryW,
+        CryptUnprotectData,
+    },
 };
 
 fn path() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    Ok(exe.with_file_name("login.dat"))
+    Ok(crate::config::data_dir()?.join("login.dat"))
 }
-
 /// `Ok(None)` if no login is saved. An unreadable file is an error, so that a saved
 /// login can never silently turn into anonymous access.
 pub fn saved() -> Result<Option<(String, String)>, String> {
     let path = path()?;
     let fail = |e: String| format!("{}: {e}", path.display());
     match std::fs::read(&path) {
-        Ok(data) => crypt(&data, false)
+        Ok(data) => crypt(&data, false, &[])
             .and_then(|d| parse(&d))
             .map(Some)
             .map_err(fail),
@@ -34,7 +35,7 @@ pub fn save(login: Option<(&str, &str)>) -> Result<(), String> {
         Some((user, password)) => {
             let plain = format!("{user}\n{password}");
             parse(plain.as_bytes())?;
-            crate::config::write_replacing(&path, &crypt(plain.as_bytes(), true)?)
+            crate::config::write_replacing(&path, &crypt(plain.as_bytes(), true, &[])?)
         }
         None => match std::fs::remove_file(&path) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => {
@@ -45,7 +46,63 @@ pub fn save(login: Option<(&str, &str)>) -> Result<(), String> {
     }
 }
 
-fn crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
+/// Decrypts a base64 text that .NET protected for the current user with `entropy`.
+pub fn decrypt_base64(text: &str, entropy: &[u8]) -> Result<String, String> {
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    let length = wide.len().try_into().map_err(|_| "text too long")?;
+    let mut data = vec![0u8; wide.len()];
+    let mut size = data.len().try_into().map_err(|_| "text too long")?;
+    // SAFETY: both buffers have the lengths passed in.
+    let ok = unsafe {
+        CryptStringToBinaryW(
+            wide.as_ptr(),
+            length,
+            CRYPT_STRING_BASE64,
+            data.as_mut_ptr(),
+            &mut size,
+            ptr::null_mut(),
+            ptr::null_mut(),
+        )
+    };
+    if ok == 0 || size == 0 {
+        return Err("invalid base64".into());
+    }
+    data.truncate(size as usize);
+    String::from_utf8(crypt(&data, false, entropy)?).map_err(|e| e.to_string())
+}
+
+/// The counterpart of `decrypt_base64`, to test it.
+#[cfg(test)]
+pub fn encrypt_base64(text: &str, entropy: &[u8]) -> Result<String, String> {
+    use windows_sys::Win32::Security::Cryptography::{CRYPT_STRING_NOCRLF, CryptBinaryToStringW};
+    let data = crypt(text.as_bytes(), true, entropy)?;
+    let mut buffer = vec![0u16; data.len() * 2 + 8];
+    let mut length = buffer.len() as u32;
+    // SAFETY: both buffers have the lengths passed in.
+    let ok = unsafe {
+        CryptBinaryToStringW(
+            data.as_ptr(),
+            data.len() as u32,
+            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+            buffer.as_mut_ptr(),
+            &mut length,
+        )
+    };
+    (ok != 0)
+        .then(|| String::from_utf16_lossy(&buffer[..length as usize]))
+        .ok_or_else(|| "base64".into())
+}
+
+fn crypt(data: &[u8], encrypt: bool, entropy: &[u8]) -> Result<Vec<u8>, String> {
+    let extra = CRYPT_INTEGER_BLOB {
+        cbData: entropy.len() as u32,
+        pbData: entropy.as_ptr().cast_mut(), // only read by the calls
+    };
+    let extra = if entropy.is_empty() {
+        ptr::null()
+    } else {
+        &raw const extra
+    };
     let input = CRYPT_INTEGER_BLOB {
         cbData: data.len().try_into().map_err(|_| "file too large")?,
         pbData: data.as_ptr().cast_mut(), // only read by the calls
@@ -60,7 +117,7 @@ fn crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
             CryptProtectData(
                 &input,
                 ptr::null(),
-                ptr::null(),
+                extra,
                 ptr::null(),
                 ptr::null(),
                 0,
@@ -70,7 +127,7 @@ fn crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
             CryptUnprotectData(
                 &input,
                 ptr::null_mut(),
-                ptr::null(),
+                extra,
                 ptr::null(),
                 ptr::null(),
                 0,
@@ -110,9 +167,10 @@ mod tests {
 
     #[test]
     fn encryption_round_trips() {
-        let secret = crypt(b"user\npassword", true).unwrap();
+        let secret = crypt(b"user\npassword", true, &[]).unwrap();
         assert_ne!(secret, b"user\npassword");
-        assert_eq!(crypt(&secret, false).unwrap(), b"user\npassword");
-        assert!(crypt(b"user\npassword", false).is_err());
+        assert_eq!(crypt(&secret, false, &[]).unwrap(), b"user\npassword");
+        assert!(crypt(&secret, false, b"other").is_err());
+        assert!(crypt(b"user\npassword", false, &[]).is_err());
     }
 }
