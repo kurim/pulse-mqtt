@@ -1,7 +1,12 @@
 //! Notification area icon with an owner-drawn menu in the Windows 11 style
 //! (light or dark, following the system setting).
 
-use crate::{config::Language, gui, update};
+use crate::{
+    config::Language,
+    gui,
+    ui::{rgb, wide},
+    update,
+};
 use std::{
     cell::RefCell,
     os::windows::process::CommandExt,
@@ -138,10 +143,6 @@ thread_local! {
 
 fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> Option<T> {
     STATE.with(|s| s.borrow_mut().as_mut().map(f))
-}
-
-fn wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain([0]).collect()
 }
 
 /// Shows the icon on its own thread and reports what the user did.
@@ -545,10 +546,6 @@ struct Palette {
     text: u32,
     disabled: u32,
     separator: u32,
-}
-
-const fn rgb(r: u8, g: u8, b: u8) -> u32 {
-    r as u32 | (g as u32) << 8 | (b as u32) << 16
 }
 
 impl Palette {

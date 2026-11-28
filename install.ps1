@@ -14,7 +14,11 @@ $name = 'PulseMQTT-Rust'
 # The task runs elevated, so the program must live where only admins can change it.
 $dir = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) $name
 $exe = Join-Path $dir 'pulsemqtt.exe'
-$loginFile = Join-Path $dir 'login.dat'
+# Settings and login belong to the user, next to those of the old app.
+$data = Join-Path $env:APPDATA 'PulseMQTT'
+$loginFile = Join-Path $data 'login.dat'
+# Where earlier versions kept it; the app moves it at its next start.
+$earlierLogin = Join-Path $dir 'login.dat'
 
 function Stop-Installed {
     if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $name }
@@ -27,8 +31,9 @@ function Stop-Installed {
 if ($Uninstall) {
     Stop-Installed
     Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
-    Remove-Item $exe, $loginFile, (Join-Path $dir 'config.json') -ErrorAction SilentlyContinue
+    Remove-Item $exe -ErrorAction SilentlyContinue
     if ((Test-Path $dir) -and -not (Get-ChildItem $dir -Force)) { Remove-Item $dir }
+    "Settings and login stay in $data."
     "$name removed. An old PulseMQTT task that was switched off stays off: Enable-ScheduledTask -TaskName PulseMQTT"
     return
 }
@@ -39,7 +44,7 @@ if (-not (Test-Path $source)) { throw "$source not found. Run 'cargo build --rel
 # Ask for everything before changing anything.
 $secret = $null
 if (-not $Anonymous) {
-    $keep = if (Test-Path $loginFile) { ' (Enter keeps the saved login)' } else { '' }
+    $keep = if ((Test-Path $loginFile) -or (Test-Path $earlierLogin)) { ' (Enter keeps the saved login)' } else { '' }
     $user = Read-Host "MQTT user$keep"
     if ($user) {
         $password = [Net.NetworkCredential]::new('', (Read-Host 'MQTT password' -AsSecureString)).Password
@@ -55,8 +60,11 @@ if (-not $Anonymous) {
 Stop-Installed
 New-Item -ItemType Directory -Force $dir | Out-Null
 Copy-Item $source $exe -Force
-if ($Anonymous) { Remove-Item $loginFile -ErrorAction SilentlyContinue }
-elseif ($secret) { [IO.File]::WriteAllBytes($loginFile, $secret) }
+if ($Anonymous) { Remove-Item $loginFile, $earlierLogin -ErrorAction SilentlyContinue }
+elseif ($secret) {
+    New-Item -ItemType Directory -Force $data | Out-Null
+    [IO.File]::WriteAllBytes($loginFile, $secret)
+}
 
 if ($ReplaceOld) {
     $old = Get-ScheduledTask -TaskName PulseMQTT -ErrorAction SilentlyContinue
@@ -78,7 +86,8 @@ Register-ScheduledTask -TaskName $name -Force -Trigger $trigger `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)) | Out-Null
 
-$config = Join-Path $dir 'config.json'
+$config = Join-Path $data 'config.json'
+if (-not (Test-Path $config)) { $config = Join-Path $dir 'config.json' }
 $mqtt = -not (Test-Path $config) -or (Get-Content $config -Raw | ConvertFrom-Json).mqtt_enabled -ne $false
 
 Start-ScheduledTask -TaskName $name

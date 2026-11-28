@@ -1,1 +1,3 @@
 1 ICON "app.ico"
+// Version 6 of the common controls, needed to draw them ourselves.
+1 24 "app.manifest"

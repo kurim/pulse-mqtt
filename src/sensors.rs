@@ -1,7 +1,7 @@
 //! All sensors in one list, used by the publisher and the sensor window.
 
 use crate::{cpu, fans, gpu, storage};
-use sysinfo::System;
+use sysinfo::{Disks, System};
 
 const GIB: f64 = (1u64 << 30) as f64;
 
@@ -21,6 +21,7 @@ pub enum Kind {
     Temperature,
     Fan,
     Data,
+    Voltage,
 }
 
 pub struct Reading {
@@ -42,6 +43,7 @@ impl Reading {
             Kind::Fan if self.id.ends_with("_percent") => "%",
             Kind::Fan => "RPM",
             Kind::Data => "GiB",
+            Kind::Voltage => "V",
         }
     }
 }
@@ -51,6 +53,7 @@ pub struct Sensors {
     gpu: Option<gpu::Gpu>,
     cpu: Option<cpu::AmdCpu>,
     fans: Option<fans::SuperIo>,
+    disks: Disks,
 }
 
 impl Sensors {
@@ -59,6 +62,7 @@ impl Sensors {
         system.refresh_cpu_usage();
         Ok(Self {
             system,
+            disks: Disks::new_with_refreshed_list()?,
             gpu: gpu::Gpu::open(),
             cpu: cpu::AmdCpu::open()
                 .inspect_err(|e| eprintln!("CPU temperature/power unavailable: {e}"))
@@ -73,6 +77,7 @@ impl Sensors {
     pub fn read(&mut self) -> Vec<Reading> {
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
+        self.disks.refresh(true);
         let fans = self.fans.as_ref().and_then(fans::SuperIo::read);
         let g = self.gpu.as_ref().map(gpu::Gpu::read).unwrap_or_default();
 
@@ -83,7 +88,7 @@ impl Sensors {
             value,
         };
         use Group::{Cpu, Drive, Gpu, Memory};
-        use Kind::{Clock, Data, Fan, Load, Power, Temperature};
+        use Kind::{Clock, Data, Fan, Load, Power, Temperature, Voltage};
         let memory = |bytes: u64| Some(bytes as f64 / GIB);
         let load = Some(self.system.global_cpu_usage().into());
         let power = self.cpu.as_mut().and_then(cpu::AmdCpu::power);
@@ -116,6 +121,37 @@ impl Sensors {
                 memory(self.system.used_memory()),
             ),
         ];
+        // Extra sensors, see `config::extra`.
+        for (number, thread) in self.system.cpus().iter().enumerate() {
+            let id = format!("cpu_load_{}", number + 1);
+            list.push(reading(&id, Cpu, Load, Some(thread.usage().into())));
+        }
+        let vram = g.memory_used.map(|mib| mib / 1024.0);
+        list.extend([
+            reading("gpu_hotspot_temp", Gpu, Temperature, g.hotspot),
+            reading("gpu_memory_clock", Gpu, Clock, g.memory_clock),
+            reading("gpu_memory_used", Gpu, Data, vram),
+            reading("gpu_voltage", Gpu, Voltage, g.voltage),
+            reading("gpu_board_power", Gpu, Power, g.board_power),
+            reading(
+                "memory_total",
+                Memory,
+                Data,
+                memory(self.system.total_memory()),
+            ),
+        ]);
+        // Fixed drives only: asking removable ones can disturb them.
+        for disk in self.disks.iter().filter(|d| !d.is_removable()) {
+            let letter = disk.mount_point().to_str().and_then(|m| m.chars().next());
+            if let Some(letter) = letter
+                && disk.total_space() > 0
+            {
+                let used = disk.total_space() - disk.available_space();
+                let percent = used as f64 * 100.0 / disk.total_space() as f64;
+                let id = format!("disk_usage_{}", letter.to_ascii_lowercase());
+                list.push(reading(&id, Drive, Load, Some(percent)));
+            }
+        }
         for (drive, value) in storage::temperatures() {
             let id = format!("storage_temp_{drive}");
             list.push(reading(&id, Drive, Temperature, Some(value)));

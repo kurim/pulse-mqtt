@@ -1,12 +1,10 @@
-//! Settings edited in the windows, stored as `config.json` next to the executable
-//! (in Program Files when installed, so only admins can change them). The login is
-//! kept separately and encrypted, see `login`.
-
+//! Settings edited in the windows, stored as `config.json` in `%APPDATA%\PulseMQTT`
+//! (where the .NET app kept its settings). The login is next to it, encrypted, see `login`.
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
     io,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 
@@ -87,18 +85,35 @@ impl Default for Config {
     }
 }
 
+/// Sensors beyond the basic set: off by default and only listed on request.
+pub fn extra(id: &str) -> bool {
+    const EXTRA: [&str; 6] = [
+        "gpu_hotspot_temp",
+        "gpu_memory_clock",
+        "gpu_memory_used",
+        "gpu_voltage",
+        "gpu_board_power",
+        "memory_total",
+    ];
+    // Numbered ones: logical processors, drives and fan headers.
+    const PREFIXES: [&str; 3] = ["cpu_load_", "disk_usage_", "fan_header_"];
+    EXTRA.contains(&id) || PREFIXES.iter().any(|p| id.starts_with(p))
+}
+
 impl Config {
-    /// The saved entry, or the default: the id as key; raw fan headers are off.
+    /// The saved entry, or the default: the id as key; extra sensors are off.
     pub fn sensor(&self, id: &str) -> Sensor {
         self.sensors.get(id).cloned().unwrap_or_else(|| Sensor {
-            enabled: !id.starts_with("fan_header_"),
+            enabled: !extra(id),
             key: id.to_owned(),
         })
     }
 
     fn path() -> Result<PathBuf, String> {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        Ok(exe.with_file_name("config.json"))
+        Ok(data_dir()?.join("config.json"))
+    }
+    pub fn exists() -> bool {
+        Self::path().is_ok_and(|path| path.exists())
     }
 
     /// Defaults if there is no file; an invalid file is an error.
@@ -139,7 +154,12 @@ impl Config {
                 "The interval must be between 0.5 and 60 s.",
             );
         }
-        if self.serial_enabled && self.serial_port.is_empty() {
+        // Other programs of the user can edit the file; nothing but a COM port is opened.
+        let com_port = self
+            .serial_port
+            .strip_prefix("COM")
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+        if self.serial_enabled && !com_port {
             return error("Wähle einen seriellen Port.", "Select a serial port.");
         }
         let mut keys = HashSet::new();
@@ -159,8 +179,41 @@ impl Config {
     }
 }
 
+/// The folder for settings and login.
+pub fn data_dir() -> Result<PathBuf, String> {
+    std::env::var_os("APPDATA")
+        .filter(|path| !path.is_empty())
+        .map(|path| PathBuf::from(path).join("PulseMQTT"))
+        .ok_or_else(|| "APPDATA is not set".to_owned())
+}
+
+/// Moves settings that earlier versions kept next to the program. Files that already
+/// exist in `to` win; the first folder in `from` that has a file provides it.
+pub fn move_settings(from: &[PathBuf], to: &Path) -> Result<(), String> {
+    for name in ["login.dat", "config.json"] {
+        let target = to.join(name);
+        let source = from
+            .iter()
+            .map(|folder| folder.join(name))
+            .find(|p| p.is_file());
+        if let Some(source) = source
+            && !target.exists()
+        {
+            let content =
+                std::fs::read(&source).map_err(|e| format!("{}: {e}", source.display()))?;
+            write_replacing(&target, &content)?;
+            // Without admin rights the old file in Program Files stays; it is ignored.
+            std::fs::remove_file(source).ok();
+        }
+    }
+    Ok(())
+}
+
 /// Writes via a temporary file, so a failure cannot leave a half-written one behind.
-pub fn write_replacing(path: &std::path::Path, content: &[u8]) -> Result<(), String> {
+pub fn write_replacing(path: &Path, content: &[u8]) -> Result<(), String> {
+    if let Some(folder) = path.parent() {
+        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    }
     let temporary = path.with_extension("tmp");
     std::fs::write(&temporary, content)
         .and_then(|()| std::fs::rename(&temporary, path))
@@ -178,6 +231,30 @@ mod tests {
         assert_eq!(config.topic, "pulsemqtt/hwinfo");
         assert!(config.sensor("cpu_temp").enabled);
         assert!(!config.sensor("fan_header_1").enabled);
+        assert!(!config.sensor("cpu_load_1").enabled);
+        assert!(!config.sensor("gpu_voltage").enabled);
+        assert!(config.sensor("cpu_load").enabled && config.sensor("gpu_power").enabled);
+    }
+
+    #[test]
+    fn moves_settings_without_replacing_newer_ones() {
+        let root = std::env::temp_dir().join(format!("pulsemqtt-move-{}", std::process::id()));
+        let (installed, beside, data) = (root.join("a"), root.join("b"), root.join("data"));
+        for folder in [&installed, &beside] {
+            std::fs::create_dir_all(folder).unwrap();
+        }
+        std::fs::write(installed.join("login.dat"), b"installed").unwrap();
+        std::fs::write(beside.join("login.dat"), b"beside").unwrap();
+        std::fs::write(beside.join("config.json"), b"config").unwrap();
+        let from = [installed.clone(), beside.clone()];
+        move_settings(&from, &data).unwrap();
+        assert_eq!(std::fs::read(data.join("login.dat")).unwrap(), b"installed");
+        assert_eq!(std::fs::read(data.join("config.json")).unwrap(), b"config");
+        assert!(!installed.join("login.dat").exists());
+        // The remaining older file must not replace what is in use now.
+        move_settings(&from, &data).unwrap();
+        assert_eq!(std::fs::read(data.join("login.dat")).unwrap(), b"installed");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -187,7 +264,10 @@ mod tests {
             |c| c.port = 0,
             |c| c.topic = "a/#".into(),
             |c| c.interval_seconds = 0.0,
-            |c| c.serial_enabled = true,
+            |c| {
+                c.serial_enabled = true;
+                c.serial_port = r"C:\file".into();
+            },
             |c| {
                 for id in ["a", "b"] {
                     let sensor = Sensor {
