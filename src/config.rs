@@ -1,5 +1,7 @@
-//! Settings edited in the windows, stored as `config.json` in `%APPDATA%\PulseMQTT`
-//! (where the .NET app kept its settings). The login is next to it, encrypted, see `login`.
+//! Settings edited in the windows, stored as `config.json`. The login is next to it,
+//! encrypted, see `login`. The installed copy keeps both next to the program, where only
+//! admins can change them; otherwise they are in `%APPDATA%\PulseMQTT`.
+
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -181,28 +183,47 @@ impl Config {
 
 /// The folder for settings and login.
 pub fn data_dir() -> Result<PathBuf, String> {
+    if crate::autostart::installed() {
+        let program = crate::autostart::program();
+        let folder = program.parent().ok_or("no program folder")?;
+        Ok(folder.to_owned())
+    } else {
+        user_dir()
+    }
+}
+
+/// `%APPDATA%\PulseMQTT`, also where the .NET app kept its settings.
+pub fn user_dir() -> Result<PathBuf, String> {
     std::env::var_os("APPDATA")
         .filter(|path| !path.is_empty())
         .map(|path| PathBuf::from(path).join("PulseMQTT"))
         .ok_or_else(|| "APPDATA is not set".to_owned())
 }
 
-/// Moves settings that earlier versions kept next to the program. Files that already
-/// exist in `to` win; the first folder in `from` that has a file provides it.
-pub fn move_settings(from: &[PathBuf], to: &Path) -> Result<(), String> {
+/// Whether `folder` holds a `config.json` written by this app. Other programs use that
+/// name too, for example in a download folder.
+pub fn ours(folder: &Path) -> bool {
+    std::fs::read(folder.join("config.json"))
+        .ok()
+        .and_then(|text| serde_json::from_slice::<serde_json::Value>(&text).ok())
+        .is_some_and(|v| v.get("mqtt_enabled").is_some() && v.get("topic").is_some())
+}
+
+/// Moves settings that an earlier version kept in `from`, as long as `to` has no
+/// `config.json` of its own. A file that already exists in `to` wins.
+pub fn move_settings(from: &Path, to: &Path) -> Result<(), String> {
+    // shortcut: until the first save, an installed copy without settings also takes files
+    // that another program of the user put there; drop this once 2026.11.3 is history.
+    if to.join("config.json").exists() {
+        return Ok(());
+    }
     for name in ["login.dat", "config.json"] {
-        let target = to.join(name);
-        let source = from
-            .iter()
-            .map(|folder| folder.join(name))
-            .find(|p| p.is_file());
-        if let Some(source) = source
-            && !target.exists()
-        {
+        let (source, target) = (from.join(name), to.join(name));
+        if source.is_file() && !target.exists() {
             let content =
                 std::fs::read(&source).map_err(|e| format!("{}: {e}", source.display()))?;
             write_replacing(&target, &content)?;
-            // Without admin rights the old file in Program Files stays; it is ignored.
+            // Without admin rights an old file in Program Files stays; it is ignored.
             std::fs::remove_file(source).ok();
         }
     }
@@ -239,21 +260,37 @@ mod tests {
     #[test]
     fn moves_settings_without_replacing_newer_ones() {
         let root = std::env::temp_dir().join(format!("pulsemqtt-move-{}", std::process::id()));
-        let (installed, beside, data) = (root.join("a"), root.join("b"), root.join("data"));
-        for folder in [&installed, &beside] {
+        let (from, to) = (root.join("from"), root.join("to"));
+        for folder in [&from, &to] {
             std::fs::create_dir_all(folder).unwrap();
         }
-        std::fs::write(installed.join("login.dat"), b"installed").unwrap();
-        std::fs::write(beside.join("login.dat"), b"beside").unwrap();
-        std::fs::write(beside.join("config.json"), b"config").unwrap();
-        let from = [installed.clone(), beside.clone()];
-        move_settings(&from, &data).unwrap();
-        assert_eq!(std::fs::read(data.join("login.dat")).unwrap(), b"installed");
-        assert_eq!(std::fs::read(data.join("config.json")).unwrap(), b"config");
-        assert!(!installed.join("login.dat").exists());
-        // The remaining older file must not replace what is in use now.
-        move_settings(&from, &data).unwrap();
-        assert_eq!(std::fs::read(data.join("login.dat")).unwrap(), b"installed");
+        std::fs::write(from.join("login.dat"), b"older").unwrap();
+        std::fs::write(from.join("config.json"), b"config").unwrap();
+        std::fs::write(to.join("login.dat"), b"in use").unwrap();
+        move_settings(&from, &to).unwrap();
+        assert_eq!(std::fs::read(to.join("login.dat")).unwrap(), b"in use");
+        assert_eq!(std::fs::read(to.join("config.json")).unwrap(), b"config");
+        assert!(!from.join("config.json").exists());
+        // With settings of its own, nothing is taken any more.
+        std::fs::remove_file(to.join("login.dat")).unwrap();
+        move_settings(&from, &to).unwrap();
+        assert!(!to.join("login.dat").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_our_config_is_recognised() {
+        let root = std::env::temp_dir().join(format!("pulsemqtt-ours-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(!ours(&root));
+        for (text, expected) in [
+            (r#"{"name": "another program"}"#.to_owned(), false),
+            ("not json".to_owned(), false),
+            (serde_json::to_string(&Config::default()).unwrap(), true),
+        ] {
+            std::fs::write(root.join("config.json"), &text).unwrap();
+            assert_eq!(ours(&root), expected, "{text}");
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 

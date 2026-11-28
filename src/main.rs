@@ -13,14 +13,16 @@ mod mqtt;
 mod pawnio;
 mod sensors;
 mod serial;
+mod setup;
 mod storage;
+mod system;
 mod tray;
 mod ui;
 mod update;
 
 use std::{
     os::windows::io::IntoRawHandle,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     sync::mpsc::RecvTimeoutError,
     thread,
@@ -57,11 +59,21 @@ fn start_again(program: PathBuf) -> std::io::Result<()> {
         .args(
             std::env::args()
                 .skip(1)
-                .filter(|a| !a.starts_with("--after=")),
+                .filter(|a| !a.starts_with("--after=") && a != "--enable-autostart"),
         )
         .arg(format!("--after={}", std::process::id()))
         .spawn()
         .map(drop)
+}
+
+/// The release also offers this program as `pulsemqtt-setup.exe`; under that name it
+/// installs itself. Browsers may add to the name, as in "pulsemqtt-setup (1).exe".
+fn setup_name(program: &Path) -> bool {
+    program.file_stem().is_some_and(|name| {
+        name.to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("setup")
+    })
 }
 
 /// Opens a console window for the sensor values and error messages.
@@ -95,7 +107,7 @@ fn main() {
     if let Err(e) = run() {
         eprintln!("{e}");
         // The autostart task retries on its own; a message box would block it.
-        if !has_argument("--background") {
+        if !has_argument("--background") && !has_argument("--silent") {
             tray::show_error(&e.to_string());
         }
         std::process::exit(1);
@@ -107,22 +119,52 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let restricted = unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) };
     assert!(restricted != 0, "could not restrict the DLL search path");
 
-    // Earlier versions kept the settings next to the program; the installed copy counts most.
-    let beside = |program: PathBuf| program.parent().map(PathBuf::from);
-    let earlier: Vec<PathBuf> = [Some(autostart::program()), std::env::current_exe().ok()]
-        .into_iter()
-        .flatten()
-        .filter_map(beside)
-        .collect();
-    config::move_settings(&earlier, &config::data_dir()?)?;
+    let setup_file = setup_name(&std::env::current_exe()?) && !has_argument("--install");
+    let page = std::env::args()
+        .find_map(|a| gui::Page::from_argument(&a))
+        .or(setup_file.then_some(gui::Page::Setup));
+    let background = has_argument("--background");
 
-    // The settings windows run as separate processes, started from the tray menu.
-    if let Some(page) = std::env::args().find_map(|a| gui::Page::from_argument(&a)) {
+    // The installed copy needs admin rights (sensors, settings), and so does removing it.
+    let needs_admin = match page {
+        Some(page) => page == gui::Page::Uninstall,
+        None => autostart::installed() && !background,
+    };
+    if needs_admin && !autostart::possible() {
+        let arguments: Vec<String> = std::env::args().skip(1).collect();
+        return Ok(setup::elevate(&arguments)?);
+    }
+
+    // Settings from earlier versions: 2026.11.3 kept those of the installed copy in
+    // %APPDATA%, versions before it kept those of any copy next to the program.
+    let user = config::user_dir()?;
+    if page == Some(gui::Page::Uninstall) {
+        // Nothing to move any more.
+    } else if autostart::installed() {
+        config::move_settings(&user, &config::data_dir()?)
+            .map_err(|e| format!("{e}\n\nStart PulseMQTT as administrator once."))?;
+    } else if let Some(folder) = std::env::current_exe()?.parent()
+        && config::ours(folder)
+    {
+        config::move_settings(folder, &user)?;
+    }
+
+    // For package managers and scripts.
+    if page == Some(gui::Page::Uninstall) && has_argument("--silent") {
+        setup::uninstall(has_argument("--purge"))?;
+        setup::delete_self_later();
+        return Ok(());
+    }
+    // The windows run as separate processes, mostly started from the tray menu.
+    if let Some(page) = page {
         std::process::exit(gui::run(page)?);
+    }
+    // Started with admin rights by the setup window.
+    if has_argument("--install") {
+        return Ok(setup::install(has_argument("--enable-autostart"))?);
     }
 
     // Autostart mode: exit if there is nothing to publish to, so that the task retries.
-    let background = has_argument("--background");
     let console = has_argument("--console");
     if console {
         open_console();
@@ -131,41 +173,62 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(pid) = std::env::args().find_map(|a| a.strip_prefix("--after=")?.parse().ok()) {
         wait_for_exit(pid);
     }
+    if autostart::installed() && tray::running() {
+        if !background {
+            tray::show_error("PulseMQTT is already running.");
+        }
+        return Ok(());
+    }
     // SAFETY: plain call before any window exists; keeps the tray menu sharp.
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
 
     update::clean_up();
+    if autostart::installed()
+        && autostart::possible()
+        && let Err(e) = setup::register()
+    {
+        eprintln!("Could not register the app: {e}");
+    }
     // First start after the .NET app: take over its settings.
-    let migration = migrate::run();
-    if let Some(outcome) = &migration {
-        if let Some(message) = &outcome.message {
-            eprintln!("{message}");
-        }
-        if outcome.autostart && autostart::possible() {
-            match autostart::enable() {
+    let mut migration = migrate::run();
+    if let Some(outcome) = &mut migration {
+        if outcome.autostart {
+            let taken_over = if autostart::possible() {
+                autostart::enable()
+            } else {
+                Err("administrator rights are missing".into())
+            };
+            match taken_over {
                 Ok(()) => {
                     autostart::remove_old_app();
                     // The new process knows nothing about the migration, so tell the user now.
                     if let Some(message) = &outcome.message {
                         tray::show_error(message);
                     }
-                    // Continue with the installed copy, which the settings now belong to.
+                    // Continue with the installed copy, which has the settings now.
                     return Ok(start_again(autostart::program())?);
                 }
-                Err(e) => eprintln!("Autostart was not taken over: {e}"),
+                Err(e) => outcome.autostart_failed(&e),
             }
         }
         if let Some(message) = outcome.message.clone() {
+            eprintln!("{message}");
             // On its own thread, so that publishing starts right away.
             thread::spawn(move || tray::show_error(&message));
         }
+    }
+    if has_argument("--enable-autostart")
+        && autostart::installed()
+        && let Err(e) = autostart::enable()
+    {
+        thread::spawn(move || tray::show_error(&e));
     }
     let mut config = config::Config::load()?;
     if migration.is_some_and(|m| m.block_mqtt) {
         config.mqtt_enabled = false;
     }
     let language = config.language;
-    let mut sensors = sensors::Sensors::open()?;
+    let mut sensors = sensors::Sensors::open();
 
     let mut status = Vec::new();
     let mut broker = None;
@@ -254,5 +317,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             trim_memory();
             next_trim = Instant::now() + Duration::from_secs(60);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_setup_file_installs() {
+        for name in ["pulsemqtt-setup.exe", "PulseMQTT-Setup (1).exe"] {
+            assert!(setup_name(&Path::new(r"C:\Downloads").join(name)), "{name}");
+        }
+        // A folder name does not count.
+        assert!(!setup_name(Path::new(r"C:\setup\pulsemqtt.exe")));
+        assert!(!setup_name(&autostart::program()));
     }
 }

@@ -23,30 +23,42 @@ select the matching `fan_header_N` in the sensor window.
 
 ## Install
 
-PawnIO has to be installed. Take `pulsemqtt.exe` from the
-[releases](https://github.com/kurim/pulse-mqtt/releases), run it as administrator and
-switch on "Start with Windows" in the settings. The app then copies itself to
-`C:\Program Files\PulseMQTT-Rust` and starts with admin rights at every logon.
+PawnIO has to be installed. Take `pulsemqtt-setup.exe` from the
+[releases](https://github.com/kurim/pulse-mqtt/releases) and run it. It installs to
+`C:\Program Files\PulseMQTT-Rust`, adds a start menu entry and, if "Start with Windows"
+stays on, starts the app with admin rights at every logon. Running a newer setup updates
+the installation. `pulsemqtt.exe` from the same release is the same program for use without
+installing; the setup is recognised by `setup` in its file name.
 
-Settings (`config.json`) and the encrypted login (`login.dat`) are kept in
-`%APPDATA%\PulseMQTT`. Programs running under your account can change them.
+To uninstall, use Windows Settings > Apps > Installed apps; settings and login are kept
+unless you choose to delete them. Without a window, in an administrator terminal:
+`pulsemqtt.exe --uninstall --silent` (add `--purge` to delete settings and login).
 
-At its first start the app takes over the settings and login of the earlier .NET app.
-Sensors that only that app offered are listed in a message.
+The installed app keeps its settings (`config.json`) and the encrypted login
+(`login.dat`) next to itself in Program Files, so changing them needs admin rights. A copy
+that is not installed keeps them in `%APPDATA%\PulseMQTT`, where every program running
+under your account can change them.
 
-To install from source instead, build with a current Rust toolchain on Windows (MSVC) and
-run the installer in an administrator PowerShell:
+At its first start the app takes over the settings and login of the earlier .NET app,
+unless it already has a login or autostart of its own. Sensors that only that app offered
+are listed in a message. Drive temperatures are published under new keys
+(`storage_temp_disk0` and so on); change them in the sensor window if your display expects
+the old ones.
+
+To install from source, build with a current Rust toolchain on Windows (MSVC), then start
+the copy that is named as the setup:
 
 ```powershell
 cargo build --release
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+Copy-Item target\release\pulsemqtt.exe target\release\pulsemqtt-setup.exe
 ```
 
-It copies the app to `C:\Program Files\PulseMQTT-Rust` and starts it with admin rights at
-every logon. `-ReplaceOld` switches off the old .NET app, `-Uninstall` removes this one.
+```powershell
+.\target\release\pulsemqtt-setup.exe
+```
 
 ## Use
 

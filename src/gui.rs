@@ -5,6 +5,7 @@ use crate::{
     config::{self, Config, Language, MAX_KEY, Sensor, SerialMode},
     login,
     sensors::{Group, Kind, Reading, Sensors},
+    setup, tray,
     ui::{self, BACKGROUND, CARD, ERROR, Event, Font, Look, MUTED, TEXT, Window},
     update,
 };
@@ -26,6 +27,7 @@ const SAVE: u16 = 1;
 const CANCEL: u16 = 2;
 const DEFAULTS: u16 = 3;
 const SHOW_ALL: u16 = 4;
+const UNINSTALL: u16 = 5;
 /// First of the filter buttons.
 const FILTER: u16 = 10;
 const FOOTER: i32 = 68;
@@ -45,6 +47,8 @@ const MODES: [SerialMode; 2] = [SerialMode::UsbSerialJtag, SerialMode::Uart0];
 pub enum Page {
     Settings,
     Sensors,
+    Setup,
+    Uninstall,
 }
 
 impl Page {
@@ -52,6 +56,8 @@ impl Page {
         match argument {
             "--settings" => Some(Self::Settings),
             "--sensors" => Some(Self::Sensors),
+            "--setup" => Some(Self::Setup),
+            "--uninstall" => Some(Self::Uninstall),
             _ => None,
         }
     }
@@ -192,6 +198,8 @@ pub fn run(page: Page) -> Result<i32, Box<dyn std::error::Error>> {
     match page {
         Page::Settings => settings(),
         Page::Sensors => sensors(),
+        Page::Setup => install(),
+        Page::Uninstall => uninstall(),
     }
 }
 
@@ -515,6 +523,166 @@ fn settings() -> Result<i32, Box<dyn std::error::Error>> {
     Ok(app.exit)
 }
 
+/// The window of the setup file.
+fn install() -> Result<i32, Box<dyn std::error::Error>> {
+    let language = App::load().0.config.language;
+    let t = move |german: &'static str, english: &'static str| language.pick(german, english);
+    let installed = autostart::program().exists();
+    let this = env!("CARGO_PKG_VERSION");
+
+    let window = Window::new(t("PulseMQTT - Installation", "PulseMQTT - Setup"), 540, 330)?;
+    let main = window.handle;
+    let panel = window.panel([0, 0, 540, 330 - FOOTER], BACKGROUND);
+    let label =
+        |text: &str, area, font, color| window.label(panel, text, area, font, color, BACKGROUND);
+    label("PulseMQTT", [20, 14, 400, 34], Font::Large, TEXT);
+    let state = match setup::installed_version() {
+        Some(version) => format!(
+            "{} {version}",
+            t("Installiert ist Version", "Installed: version")
+        ),
+        None if installed => t("Bereits installiert", "Already installed").to_owned(),
+        None => t("Noch nicht installiert", "Not installed yet").to_owned(),
+    };
+    label(&state, [20, 48, 500, 20], Font::Normal, MUTED);
+
+    let mut card = Card::new(&window, panel, 80, 1, t("INSTALLATION", "INSTALLATION"));
+    // An existing installation keeps its choice; a new one starts with Windows.
+    let on = !installed || autostart::enabled();
+    let starts = card.switch(t("Mit Windows starten", "Start with Windows"), on);
+    label(
+        t(
+            "Installiert nach C:\\Program Files\\PulseMQTT-Rust. Windows fragt dafür nach \
+             Administratorrechten.",
+            "Installs to C:\\Program Files\\PulseMQTT-Rust. Windows asks for administrator \
+             rights.",
+        ),
+        [20, card.y + 20, Card::WIDTH, 40],
+        Font::Small,
+        MUTED,
+    );
+
+    let button =
+        |text: &str, id, look| window.button(main, text, [0, 0, 10, 10], id, look, BACKGROUND);
+    let confirm = if installed {
+        format!("{this} {}", t("installieren", "install"))
+    } else {
+        t("Installieren", "Install").to_owned()
+    };
+    let confirm = button(&confirm, SAVE, Look::Primary);
+    let cancel = button(t("Abbrechen", "Cancel"), CANCEL, Look::Secondary);
+    let remove =
+        installed.then(|| button(t("Deinstallieren", "Uninstall"), UNINSTALL, Look::Secondary));
+    let error = window.label(main, "", [0, 0, 10, 10], Font::Small, ERROR, BACKGROUND);
+    let layout = || {
+        let (width, height) = window.size();
+        let y = height - FOOTER + 16;
+        window.move_to(panel, [0, 0, width, height - FOOTER - 24]);
+        window.move_to(error, [20, y - 38, width - 40, 36]);
+        window.move_to(confirm, [width - 160, y, 140, 34]);
+        window.move_to(cancel, [width - 290, y, 120, 34]);
+        if let Some(remove) = remove {
+            window.move_to(remove, [20, y, 130, 34]);
+        }
+    };
+    layout();
+
+    window.run(panel, None, |event| {
+        let arguments: Vec<String> = match event {
+            Event::Command(SAVE, BN_CLICKED) => {
+                let mut arguments = vec!["--install".to_owned()];
+                if ui::checked(starts) {
+                    arguments.push("--enable-autostart".to_owned());
+                }
+                arguments
+            }
+            Event::Command(UNINSTALL, BN_CLICKED) => vec!["--uninstall".to_owned()],
+            Event::Command(CANCEL, BN_CLICKED) | Event::Close => return false,
+            Event::Command(ui::RESIZED, _) => {
+                layout();
+                return true;
+            }
+            _ => return true,
+        };
+        match setup::elevate(&arguments) {
+            Ok(()) => false,
+            Err(e) => {
+                ui::set_text(error, &e);
+                true
+            }
+        }
+    });
+    Ok(0)
+}
+
+/// Started from Settings > Apps or the setup window, with admin rights.
+fn uninstall() -> Result<i32, Box<dyn std::error::Error>> {
+    let language = App::load().0.config.language;
+    let t = move |german: &'static str, english: &'static str| language.pick(german, english);
+
+    let window = Window::new(
+        t("PulseMQTT - Deinstallation", "PulseMQTT - Uninstall"),
+        540,
+        260,
+    )?;
+    let main = window.handle;
+    let panel = window.panel([0, 0, 540, 260 - FOOTER], BACKGROUND);
+    window.label(
+        panel,
+        t("PulseMQTT deinstallieren?", "Uninstall PulseMQTT?"),
+        [20, 14, 500, 34],
+        Font::Large,
+        TEXT,
+        BACKGROUND,
+    );
+    let mut card = Card::new(&window, panel, 64, 1, t("DATEN", "DATA"));
+    let purge = card.switch(
+        t(
+            "Auch Einstellungen und Login löschen",
+            "Also delete settings and login",
+        ),
+        false,
+    );
+
+    let button =
+        |text: &str, id, look| window.button(main, text, [0, 0, 10, 10], id, look, BACKGROUND);
+    let confirm = button(t("Deinstallieren", "Uninstall"), UNINSTALL, Look::Primary);
+    let cancel = button(t("Abbrechen", "Cancel"), CANCEL, Look::Secondary);
+    let error = window.label(main, "", [0, 0, 10, 10], Font::Small, ERROR, BACKGROUND);
+    let layout = || {
+        let (width, height) = window.size();
+        let y = height - FOOTER + 16;
+        window.move_to(panel, [0, 0, width, height - FOOTER - 24]);
+        window.move_to(error, [20, y - 38, width - 40, 36]);
+        window.move_to(confirm, [width - 160, y, 140, 34]);
+        window.move_to(cancel, [width - 290, y, 120, 34]);
+    };
+    layout();
+
+    let mut removed = false;
+    window.run(panel, None, |event| {
+        match event {
+            Event::Command(UNINSTALL, BN_CLICKED) => match setup::uninstall(ui::checked(purge)) {
+                Ok(()) => {
+                    removed = true;
+                    return false;
+                }
+                Err(e) => ui::set_text(error, &e),
+            },
+            Event::Command(CANCEL, BN_CLICKED) | Event::Close => return false,
+            Event::Command(ui::RESIZED, _) => layout(),
+            _ => {}
+        }
+        true
+    });
+    if removed {
+        tray::show_info(t("PulseMQTT wurde entfernt.", "PulseMQTT was removed."));
+        // Last, so that the program is no longer in use when it is deleted.
+        setup::delete_self_later();
+    }
+    Ok(0)
+}
+
 /// The controls of one sensor in the table.
 struct Row {
     id: String,
@@ -549,7 +717,7 @@ fn value_text(reading: &Reading) -> String {
 
 fn sensors() -> Result<i32, Box<dyn std::error::Error>> {
     let (mut app, problem) = App::load();
-    let mut source = Sensors::open()?;
+    let mut source = Sensors::open();
     let readings = source.read();
     let language = app.config.language;
     let t = move |german: &'static str, english: &'static str| language.pick(german, english);

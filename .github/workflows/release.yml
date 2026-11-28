@@ -56,12 +56,17 @@ jobs:
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         run: target\release\examples\sign.exe target\release\pulsemqtt.exe "version:${{ steps.version.outputs.version }}"
 
+      # The same program: under this name it installs itself.
+      - name: Setup file
+        run: Copy-Item target\release\pulsemqtt.exe target\release\pulsemqtt-setup.exe
+
       # A pre-release, so that the updater of the old .NET app ignores it.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "${{ github.ref_name }}"
+          target\release\pulsemqtt-setup.exe
           target\release\pulsemqtt.exe
           target\release\pulsemqtt.exe.minisig
           --verify-tag --prerelease

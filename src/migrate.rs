@@ -2,11 +2,12 @@
 //! cannot be taken over switches MQTT off: the broker must never silently become open.
 
 use crate::{
+    autostart,
     config::{Config, Language, MAX_KEY, Sensor, SerialMode},
     login,
 };
 use serde_json::Value;
-use std::{collections::HashSet, io, path::PathBuf};
+use std::{collections::HashSet, io};
 
 /// Additional DPAPI entropy the .NET app used for the password.
 const ENTROPY: &[u8] = b"PulseMQTT.MqttPassword.v1";
@@ -42,30 +43,54 @@ pub struct Outcome {
     pub message: Option<String>,
     /// Set if MQTT has to stay off for this start although the configuration says otherwise.
     pub block_mqtt: bool,
+    language: Language,
 }
 
-/// Does nothing (`None`) once there is a `config.json`, or without old settings.
+impl Outcome {
+    /// Adds to the message that the user has to switch on the autostart.
+    pub fn autostart_failed(&mut self, reason: &str) {
+        let hint = self.language.pick(
+            "Der Autostart wurde nicht übernommen. Bitte PulseMQTT als Administrator starten, \
+             in den Einstellungen „Mit Windows starten“ einschalten und die alte Aufgabe \
+             „PulseMQTT“ in der Aufgabenplanung deaktivieren.",
+            "The autostart was not taken over. Please start PulseMQTT as administrator, switch \
+             on \"Start with Windows\" in the settings and disable the old task \"PulseMQTT\" in \
+             the Task Scheduler.",
+        );
+        let text = format!("{hint}\n({reason})");
+        self.message = Some(match self.message.take() {
+            Some(message) => format!("{message}\n\n{text}"),
+            None => text,
+        });
+    }
+}
+
+/// Does nothing (`None`) without old settings, or once this app has been in use: it has
+/// settings, a login or its autostart.
 pub fn run() -> Option<Outcome> {
-    if Config::exists() {
+    if Config::exists() || login::exists() {
         return None;
     }
-    let path = PathBuf::from(std::env::var_os("APPDATA")?).join(r"PulseMQTT\settings.json");
+    let path = crate::config::user_dir().ok()?.join("settings.json");
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return None,
         Err(_) => String::new(), // reported as invalid below
     };
+    if autostart::enabled() {
+        return None;
+    }
     let mut imported = import(&text);
     // The login first: `config.json` marks the migration as done.
     let saved = match &imported.login {
-        Some((user, password)) if !matches!(login::saved(), Ok(Some(_))) => {
-            login::save(Some((user, password)))
-        }
-        _ => Ok(()),
+        Some((user, password)) => login::save(Some((user, password))),
+        None => Ok(()),
     }
     .and_then(|()| imported.config.save());
     let block_mqtt = saved.is_err();
     if let Err(e) = saved {
+        // A login left behind would stop the next start from trying again.
+        login::save(None).ok();
         imported.problems.push(e);
     }
     let language = imported.config.language;
@@ -81,9 +106,9 @@ pub fn run() -> Option<Outcome> {
     });
     Some(Outcome {
         autostart: imported.autostart && !block_mqtt,
-
         message,
         block_mqtt,
+        language,
     })
 }
 

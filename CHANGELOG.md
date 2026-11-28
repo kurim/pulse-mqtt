@@ -7,6 +7,36 @@ Versions of the Rust app follow `year.month.patch`.
 
 ## [Unreleased]
 
+## [2026.11.4] - 2026-11-28
+
+### Added
+
+- `pulsemqtt-setup.exe` installs or updates the app. The installed app appears in the start
+  menu and under Installed apps in Windows Settings, where it can be uninstalled,
+  optionally with its settings and login. `pulsemqtt.exe` still runs without installing.
+
+### Changed
+
+- The installed app asks for administrator rights when started by hand, and only one copy
+  of it runs.
+- The installed app keeps `config.json` and `login.dat` in Program Files again, where only
+  admins can change them. Files that 2026.11.3 moved to `%APPDATA%\PulseMQTT` are moved
+  back at the first start. A copy that is not installed keeps using that folder.
+- CPU load, memory and drive usage are read directly from Windows, without the `sysinfo`
+  library. Only fixed drives are asked.
+- The settings of the .NET app are no longer taken over if a login or the autostart of this
+  app already exists.
+
+### Removed
+
+- `install.ps1`.
+
+### Fixed
+
+- A `config.json` of another program next to the downloaded app is no longer moved away.
+- A message appears if the autostart of the .NET app cannot be taken over.
+- A drive mounted into a folder no longer appears under the letter of the other drive.
+
 ## [2026.11.3] - 2026-11-28
 
 ### Added
@@ -84,7 +114,8 @@ First release of the rewrite in Rust. It replaces the .NET app, whose last relea
 - Fan speeds on boards without a Nuvoton NCT6799D.
 - The choice between sources for drive sensors.
 
-[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.3...HEAD
+[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.4...HEAD
+[2026.11.4]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.3...v2026.11.4
 [2026.11.3]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.2...v2026.11.3
 [2026.11.2]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.1...v2026.11.2
 [2026.11.1]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.0...v2026.11.1
