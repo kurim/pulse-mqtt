@@ -145,6 +145,14 @@ fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> Option<T> {
     STATE.with(|s| s.borrow_mut().as_mut().map(f))
 }
 
+const CLASS: &str = "PulseMqttTray";
+
+/// Whether a tray icon of this app exists, in any process.
+pub fn running() -> bool {
+    // SAFETY: a NUL-terminated class name.
+    unsafe { !FindWindowW(wide(CLASS).as_ptr(), null()).is_null() }
+}
+
 /// Shows the icon on its own thread and reports what the user did.
 pub fn spawn(tooltip: String, language: Language, auto_update: bool) -> Receiver<Event> {
     let (events, receiver) = channel();
@@ -156,7 +164,7 @@ fn run(events: Sender<Event>, tooltip: String, language: Language, auto_update: 
     // SAFETY: plain Win32 window setup; all strings are NUL-terminated and outlive the calls.
     unsafe {
         let instance = GetModuleHandleW(null());
-        let class = wide("PulseMqttTray");
+        let class = wide(CLASS);
         let taskbar_created = RegisterWindowMessageW(wide("TaskbarCreated").as_ptr());
         STATE.with(|s| {
             *s.borrow_mut() = Some(State {
@@ -474,6 +482,10 @@ pub fn show_error(text: &str) {
     message(text, MB_OK | MB_ICONERROR);
 }
 
+pub fn show_info(text: &str) {
+    message(text, MB_OK | MB_ICONINFORMATION);
+}
+
 fn message(text: &str, style: MESSAGEBOX_STYLE) -> MESSAGEBOX_RESULT {
     // SAFETY: NUL-terminated strings that outlive the call.
     unsafe {
@@ -497,29 +509,11 @@ unsafe fn finish(window: HWND, event: Event) {
 
 /// Starts an elevated copy; false if the user declines the UAC prompt.
 fn restart_elevated() -> bool {
-    let Ok(exe) = std::env::current_exe() else {
-        return false;
-    };
-    let Some(exe) = exe.to_str() else {
-        return false;
-    };
     // The new process waits for this one so that the broker port is free again.
-    let mut arguments = format!("--after={}", std::process::id());
-    for flag in std::env::args().filter(|a| a == "--background" || a == "--console") {
-        arguments = format!("{arguments} {flag}");
-    }
-    // SAFETY: NUL-terminated strings that outlive the call.
-    let result = unsafe {
-        ShellExecuteW(
-            null_mut(),
-            wide("runas").as_ptr(),
-            wide(exe).as_ptr(),
-            wide(&arguments).as_ptr(),
-            null(),
-            SW_SHOWNORMAL,
-        )
-    };
-    result as usize > 32
+    let mut arguments = vec![format!("--after={}", std::process::id())];
+    arguments
+        .extend(std::env::args().filter(|a| ["--background", "--console"].contains(&a.as_str())));
+    crate::setup::elevate(&arguments).is_ok()
 }
 
 fn uses_light_theme() -> bool {

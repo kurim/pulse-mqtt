@@ -1,5 +1,5 @@
-//! MQTT login: `login.dat` in the data folder, holding "user\npassword" encrypted with
-//! DPAPI for the current Windows user. Written by install.ps1 or the settings window.
+//! MQTT login: `login.dat` next to `config.json`, holding "user\npassword" encrypted with
+//! DPAPI for the current Windows user. Written by the settings window or when taking over the .NET app.
 
 use std::{io, path::PathBuf, ptr};
 use windows_sys::Win32::{
@@ -13,6 +13,11 @@ use windows_sys::Win32::{
 fn path() -> Result<PathBuf, String> {
     Ok(crate::config::data_dir()?.join("login.dat"))
 }
+/// Whether a login is saved, readable or not.
+pub fn exists() -> bool {
+    path().is_ok_and(|path| path.exists())
+}
+
 /// `Ok(None)` if no login is saved. An unreadable file is an error, so that a saved
 /// login can never silently turn into anonymous access.
 pub fn saved() -> Result<Option<(String, String)>, String> {

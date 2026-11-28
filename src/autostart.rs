@@ -1,6 +1,6 @@
 //! "Start with Windows": a scheduled task, because Windows does not start programs with
 //! admin rights from the Run key. Because the task runs elevated, it points at a copy in
-//! Program Files, where only admins can change it. Same task and folder as install.ps1.
+//! Program Files, where only admins can change it.
 
 use std::{
     os::windows::process::CommandExt,
@@ -27,6 +27,15 @@ const SCHTASKS: &str = r"C:\Windows\System32\schtasks.exe";
 /// Where the autostart copy of the program lives.
 pub fn program() -> PathBuf {
     Path::new(FOLDER).join("pulsemqtt.exe")
+}
+
+/// Whether this is the autostart copy.
+pub fn installed() -> bool {
+    std::env::current_exe().is_ok_and(|current| {
+        current
+            .as_os_str()
+            .eq_ignore_ascii_case(program().as_os_str())
+    })
 }
 
 /// Creating and removing the task needs admin rights.
@@ -83,16 +92,14 @@ fn old_run_value(delete: bool) -> bool {
 pub fn enable() -> Result<(), String> {
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
     let folder = Path::new(FOLDER);
-    if !current
-        .as_os_str()
-        .eq_ignore_ascii_case(program().as_os_str())
-    {
+    if !installed() {
         // The task does not get a login from the environment: the broker would be open.
         if std::env::var_os("PULSEMQTT_USER").is_some() && matches!(crate::login::saved(), Ok(None))
         {
             return Err("PULSEMQTT_USER: save the login in this window first".into());
         }
         copy_program(&current, folder)?;
+        copy_settings(&crate::config::user_dir()?, folder)?;
     }
     // Next to the program, so that nobody without admin rights can swap the definition.
     let definition = folder.join("task.xml");
@@ -124,7 +131,7 @@ pub fn disable() -> Result<(), String> {
     .map(drop)
 }
 
-fn copy_program(source: &Path, folder: &Path) -> Result<(), String> {
+pub(crate) fn copy_program(source: &Path, folder: &Path) -> Result<(), String> {
     let fail = |path: &Path, e: std::io::Error| format!("{}: {e}", path.display());
     std::fs::create_dir_all(folder).map_err(|e| fail(folder, e))?;
     let target = folder.join("pulsemqtt.exe");
@@ -136,6 +143,21 @@ fn copy_program(source: &Path, folder: &Path) -> Result<(), String> {
         std::fs::write(&target, program).map_err(|e| fail(&target, e))
     }
 }
+
+/// The installed copy keeps settings and login next to itself, where only admins can
+/// change them. What does not exist in `from` is left alone, so that a login saved for
+/// the installed copy is never removed silently.
+fn copy_settings(from: &Path, folder: &Path) -> Result<(), String> {
+    for name in ["login.dat", "config.json"] {
+        let source = from.join(name);
+        if source.exists() {
+            std::fs::copy(&source, folder.join(name))
+                .map_err(|e| format!("{}: {e}", source.display()))?;
+        }
+    }
+    Ok(())
+}
+
 fn user() -> Result<String, String> {
     let mut name = [0u16; 512];
     let mut length = name.len() as u32;
@@ -242,6 +264,21 @@ mod tests {
         assert!(xml.contains("<RunLevel>HighestAvailable</RunLevel>"));
         assert!(xml.contains(r"<Command>C:\Program Files\PulseMQTT-Rust\pulsemqtt.exe</Command>"));
         assert!(user().unwrap().contains('\\'));
+    }
+
+    #[test]
+    fn settings_go_along_and_a_saved_login_stays() {
+        let root = std::env::temp_dir().join(format!("pulsemqtt-take-{}", std::process::id()));
+        let (from, to) = (root.join("from"), root.join("to"));
+        for folder in [&from, &to] {
+            std::fs::create_dir_all(folder).unwrap();
+        }
+        std::fs::write(from.join("config.json"), b"settings").unwrap();
+        std::fs::write(to.join("login.dat"), b"secret").unwrap();
+        copy_settings(&from, &to).unwrap();
+        assert_eq!(std::fs::read(to.join("config.json")).unwrap(), b"settings");
+        assert_eq!(std::fs::read(to.join("login.dat")).unwrap(), b"secret");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
