@@ -7,6 +7,13 @@ Versions of the Rust app follow `year.month.patch`.
 
 ## [Unreleased]
 
+## [2026.11.5] - 2026-11-28
+
+### Added
+
+- The file properties of the program and the setup show description, version, product name
+  and copyright.
+
 ## [2026.11.4] - 2026-11-28
 
 ### Added
@@ -114,7 +121,8 @@ First release of the rewrite in Rust. It replaces the .NET app, whose last relea
 - Fan speeds on boards without a Nuvoton NCT6799D.
 - The choice between sources for drive sensors.
 
-[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.4...HEAD
+[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.5...HEAD
+[2026.11.5]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.4...v2026.11.5
 [2026.11.4]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.3...v2026.11.4
 [2026.11.3]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.2...v2026.11.3
 [2026.11.2]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.1...v2026.11.2
