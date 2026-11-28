@@ -1,6 +1,7 @@
 //! The settings and sensor windows (egui), run as their own process.
 
 use crate::{
+    autostart,
     config::{Config, Language, MAX_KEY, Sensor, SerialMode},
     login,
     sensors::{Group, Kind, Reading, Sensors},
@@ -9,11 +10,9 @@ use crate::{
 use eframe::egui::{self, Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
-    os::windows::process::CommandExt,
-    process::Command,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicI32, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -23,7 +22,6 @@ use windows_sys::Win32::{
         DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DwmSetWindowAttribute,
     },
     System::LibraryLoader::GetModuleHandleW,
-    System::Threading::CREATE_NO_WINDOW,
     UI::{
         HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
         WindowsAndMessaging::{
@@ -35,7 +33,8 @@ use windows_sys::Win32::{
 
 /// Exit code of a window process that saved changes.
 pub const SAVED: i32 = 10;
-const TASK: &str = "PulseMQTT-Rust";
+/// Saved, and the app was just set up to start with Windows: continue with that copy.
+pub const INSTALLED: i32 = 11;
 
 const BACKGROUND: Color32 = Color32::from_rgb(13, 14, 18);
 const CARD: Color32 = Color32::from_rgb(22, 25, 33);
@@ -62,9 +61,9 @@ impl Page {
     }
 }
 
-/// Shows the window until it is closed. `true` if changes were saved.
-pub fn run(page: Page) -> Result<bool, Box<dyn std::error::Error>> {
-    let saved = Arc::new(AtomicBool::new(false));
+/// Shows the window until it is closed. Returns the exit code for the process.
+pub fn run(page: Page) -> Result<i32, Box<dyn std::error::Error>> {
+    let saved = Arc::new(AtomicI32::new(0));
     let app = App::new(page, saved.clone())?;
     let title = match page {
         Page::Settings => app.t("PulseMQTT - Einstellungen", "PulseMQTT - Settings"),
@@ -194,7 +193,7 @@ struct App {
     config: Config,
     /// Problem shown above the buttons.
     error: Option<String>,
-    saved: Arc<AtomicBool>,
+    saved: Arc<AtomicI32>,
 
     // Settings page
     user: String,
@@ -202,9 +201,9 @@ struct App {
     /// What is stored; `None` if it could not be read.
     stored_login: Option<Option<(String, String)>>,
     ports: Vec<String>,
-    /// `None` if the app is not installed as a task.
-    autostart: Option<bool>,
-    autostart_before: Option<bool>,
+    autostart: bool,
+    autostart_before: bool,
+    old_autostart: bool,
 
     // Sensor page
     sensors: Option<Sensors>,
@@ -214,7 +213,7 @@ struct App {
 }
 
 impl App {
-    fn new(page: Page, saved: Arc<AtomicBool>) -> Result<Self, sysinfo::Error> {
+    fn new(page: Page, saved: Arc<AtomicI32>) -> Result<Self, sysinfo::Error> {
         // A broken file is reported; saving then replaces it with what the window shows.
         let (config, mut error) = match Config::load() {
             Ok(config) => (config, None),
@@ -229,8 +228,9 @@ impl App {
             password: String::new(),
             stored_login: None,
             ports: Vec::new(),
-            autostart: None,
-            autostart_before: None,
+            autostart: false,
+            autostart_before: false,
+            old_autostart: false,
             sensors: None,
             readings: Vec::new(),
             next_read: Instant::now(),
@@ -251,8 +251,9 @@ impl App {
                 app.ports = serialport::available_ports()
                     .map(|ports| ports.into_iter().map(|p| p.port_name).collect())
                     .unwrap_or_default();
-                app.autostart = autostart_state();
+                app.autostart = autostart::enabled();
                 app.autostart_before = app.autostart;
+                app.old_autostart = autostart::old_app_enabled();
             }
             Page::Sensors => app.sensors = Some(Sensors::open()?),
         }
@@ -287,11 +288,14 @@ impl App {
         }
         self.config.save()?;
         // The app has to reload even if switching the autostart fails afterwards.
-        self.saved.store(true, Ordering::Relaxed);
-        if let Some(enabled) = self.autostart
-            && self.autostart != self.autostart_before
-        {
-            set_autostart(enabled)?;
+        self.saved.store(SAVED, Ordering::Relaxed);
+        if self.autostart != self.autostart_before {
+            if self.autostart {
+                autostart::enable()?;
+                self.saved.store(INSTALLED, Ordering::Relaxed);
+            } else {
+                autostart::disable()?;
+            }
             self.autostart_before = self.autostart;
         }
         Ok(())
@@ -407,16 +411,29 @@ impl App {
             row(
                 ui,
                 t("Mit Windows starten", "Start with Windows"),
-                |ui, label| match &mut self.autostart {
-                    Some(enabled) => switch(ui, enabled, label),
-                    None => {
+                |ui, label| {
+                    if autostart::possible() {
+                        switch(ui, &mut self.autostart, label);
+                    } else {
                         ui.colored_label(
                             MUTED,
-                            t("erst install.ps1 ausführen", "run install.ps1 first"),
+                            t(
+                                "dafür als Administrator neu starten (Tray-Menü)",
+                                "restart as administrator first (tray menu)",
+                            ),
                         );
                     }
                 },
             );
+            if self.autostart && self.old_autostart {
+                ui.colored_label(
+                    ERROR,
+                    t(
+                        "Die alte PulseMQTT-App startet auch noch mit Windows (gleicher Port).",
+                        "The old PulseMQTT app also still starts with Windows (same port).",
+                    ),
+                );
+            }
             row(
                 ui,
                 t("Automatische Updates", "Automatic updates"),
@@ -702,57 +719,4 @@ fn name(id: &str, language: Language) -> String {
         other => other,
     }
     .to_owned()
-}
-
-fn schtasks(arguments: &[&str]) -> Option<std::process::Output> {
-    // Full path: this process may be elevated.
-    Command::new(r"C:\Windows\System32\schtasks.exe")
-        .args(arguments)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .ok()
-}
-
-/// Whether the installed task is enabled; `None` without a task.
-fn autostart_state() -> Option<bool> {
-    let output = schtasks(&["/Query", "/TN", TASK, "/XML"])?;
-    output
-        .status
-        .success()
-        .then(|| task_enabled(&String::from_utf8_lossy(&output.stdout)))
-}
-
-fn task_enabled(xml: &str) -> bool {
-    // Triggers have their own <Enabled>; only the one in <Settings> counts. Default: true.
-    let settings = xml
-        .split_once("<Settings>")
-        .and_then(|(_, rest)| rest.split_once("</Settings>"))
-        .map_or("", |(settings, _)| settings);
-    !settings.contains("<Enabled>false</Enabled>")
-}
-
-fn set_autostart(enabled: bool) -> Result<(), String> {
-    let switch = if enabled { "/ENABLE" } else { "/DISABLE" };
-    match schtasks(&["/Change", "/TN", TASK, switch]) {
-        Some(output) if output.status.success() => Ok(()),
-        Some(output) => Err(format!(
-            "schtasks: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )),
-        None => Err("schtasks.exe".to_owned()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn task_state_comes_from_the_settings_block() {
-        let xml = |setting| {
-            format!("<Triggers><Enabled>false</Enabled></Triggers><Settings>{setting}</Settings>")
-        };
-        assert!(task_enabled(&xml("")));
-        assert!(!task_enabled(&xml("<Enabled>false</Enabled>")));
-    }
 }

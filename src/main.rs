@@ -1,6 +1,7 @@
 // No console window; "--console" opens one.
 #![windows_subsystem = "windows"]
 
+mod autostart;
 mod config;
 mod cpu;
 mod fans;
@@ -16,8 +17,8 @@ mod tray;
 mod update;
 
 use std::{
-    os::windows::io::IntoRawHandle, process::Command, sync::mpsc::RecvTimeoutError, thread,
-    time::Duration,
+    os::windows::io::IntoRawHandle, path::PathBuf, process::Command, sync::mpsc::RecvTimeoutError,
+    thread, time::Duration,
 };
 use windows_sys::Win32::{
     Foundation::CloseHandle,
@@ -42,8 +43,8 @@ fn wait_for_exit(pid: u32) {
 }
 
 /// Starts a new copy with the same arguments that takes over once this one has exited.
-fn start_again() -> std::io::Result<()> {
-    Command::new(std::env::current_exe()?)
+fn start_again(program: PathBuf) -> std::io::Result<()> {
+    Command::new(program)
         .args(
             std::env::args()
                 .skip(1)
@@ -92,10 +93,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // The settings windows run as separate processes, started from the tray menu.
     if let Some(page) = std::env::args().find_map(|a| gui::Page::from_argument(&a)) {
-        if gui::run(page)? {
-            std::process::exit(gui::SAVED);
-        }
-        return Ok(());
+        std::process::exit(gui::run(page)?);
     }
 
     // Autostart mode: exit if there is nothing to publish to, so that the task retries.
@@ -165,7 +163,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // CPU load and power are averages over this pause.
         match events.recv_timeout(interval) {
             Ok(tray::Event::Quit) => return Ok(()),
-            Ok(tray::Event::Reload) => return Ok(start_again()?),
+            Ok(tray::Event::Reload) => return Ok(start_again(std::env::current_exe()?)?),
+            Ok(tray::Event::Switch) => return Ok(start_again(autostart::program())?),
             Err(RecvTimeoutError::Timeout) => {}
             // The tray thread is gone; keep publishing.
             Err(RecvTimeoutError::Disconnected) => thread::sleep(interval),

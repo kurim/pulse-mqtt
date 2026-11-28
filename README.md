@@ -23,7 +23,12 @@ select the matching `fan_header_N` in the sensor window.
 
 ## Install
 
-PawnIO has to be installed. Build with a current Rust toolchain on Windows (MSVC), then
+PawnIO has to be installed. Take `pulsemqtt.exe` from the
+[releases](https://github.com/kurim/pulse-mqtt/releases), run it as administrator and
+switch on "Start with Windows" in the settings. The app then copies itself to
+`C:\Program Files\PulseMQTT-Rust` and starts with admin rights at every logon.
+
+To install from source instead, build with a current Rust toolchain on Windows (MSVC) and
 run the installer in an administrator PowerShell:
 
 ```powershell
