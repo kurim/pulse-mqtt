@@ -29,6 +29,19 @@ jobs:
           git merge-base --is-ancestor HEAD origin/main
           if ($LASTEXITCODE) { throw "The tagged commit is not on main" }
           "version=$version" >> $env:GITHUB_OUTPUT
+          # The release notes are this version's section of the changelog.
+          $inside = $false
+          $section = foreach ($line in Get-Content CHANGELOG.md -Encoding utf8) {
+            if ($line -match '^## \[') { $inside = $line.StartsWith("## [$version]"); continue }
+            if ($line -match '^\[[^\]]+\]:\s') { $inside = $false }
+            if ($inside) { $line }
+          }
+          $notes = ($section -join "`n").Trim()
+          if (-not $notes) { throw "CHANGELOG.md has no section for $version" }
+          # GitHub shows every line break in release notes, so undo the wrapping.
+          $notes = $notes -replace "(?<=[^`n])`n(?!`n|#|- ) *", ' '
+          $notes += "`n`nRequires the PawnIO driver (https://pawnio.eu/) for CPU temperature, power and fan speeds."
+          Set-Content "$env:RUNNER_TEMP\notes.md" $notes -Encoding utf8
 
       - name: Test
         run: cargo test --locked
@@ -51,6 +64,6 @@ jobs:
           gh release create "${{ github.ref_name }}"
           target\release\pulsemqtt.exe
           target\release\pulsemqtt.exe.minisig
-          --verify-tag --prerelease --generate-notes
+          --verify-tag --prerelease
           --title "PulseMQTT ${{ steps.version.outputs.version }}"
-          --notes "Requires the PawnIO driver (https://pawnio.eu/) for CPU temperature, power and fan speeds."
+          --notes-file "${{ runner.temp }}\notes.md"

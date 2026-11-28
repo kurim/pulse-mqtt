@@ -93,8 +93,9 @@ impl Publisher {
             router: RouterConfig {
                 max_connections: 64,
                 max_outgoing_packet_count: 200,
-                max_segment_size: 1024 * 1024,
-                max_segment_count: 10,
+                // Subscribers only need current values; the router keeps this much history.
+                max_segment_size: 64 * 1024,
+                max_segment_count: 2,
                 ..Default::default()
             },
             v4: Some(HashMap::from([("v4".into(), server)])),

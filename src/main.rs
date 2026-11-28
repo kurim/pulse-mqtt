@@ -1,3 +1,6 @@
+// No console window; "--console" opens one.
+#![windows_subsystem = "windows"]
+
 mod config;
 mod cpu;
 mod fans;
@@ -13,18 +16,15 @@ mod tray;
 mod update;
 
 use std::{
-    os::windows::process::CommandExt,
-    process::{Command, Stdio},
-    sync::mpsc::RecvTimeoutError,
-    thread,
+    os::windows::io::IntoRawHandle, process::Command, sync::mpsc::RecvTimeoutError, thread,
     time::Duration,
 };
 use windows_sys::Win32::{
     Foundation::CloseHandle,
     System::{
-        Console::FreeConsole,
+        Console::{AllocConsole, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle},
         LibraryLoader::{LOAD_LIBRARY_SEARCH_SYSTEM32, SetDefaultDllDirectories},
-        Threading::{CREATE_NEW_CONSOLE, OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
+        Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
     },
     UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
 };
@@ -42,23 +42,49 @@ fn wait_for_exit(pid: u32) {
 }
 
 /// Starts a new copy with the same arguments that takes over once this one has exited.
-fn start_again(background: bool) -> std::io::Result<()> {
-    let mut command = Command::new(std::env::current_exe()?);
-    command.arg(format!("--after={}", std::process::id()));
-    if background {
-        command
-            .arg("--background")
-            // There is no console whose handles could be inherited.
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-    } else {
-        command.creation_flags(CREATE_NEW_CONSOLE);
-    }
-    command.spawn().map(drop)
+fn start_again() -> std::io::Result<()> {
+    Command::new(std::env::current_exe()?)
+        .args(
+            std::env::args()
+                .skip(1)
+                .filter(|a| !a.starts_with("--after=")),
+        )
+        .arg(format!("--after={}", std::process::id()))
+        .spawn()
+        .map(drop)
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Opens a console window for the sensor values and error messages.
+fn open_console() {
+    // SAFETY: plain Win32 call; it fails harmlessly if there already is a console.
+    unsafe { AllocConsole() };
+    // Handles passed in by a parent process would otherwise stay in place.
+    if let Ok(console) = std::fs::File::options().write(true).open("CONOUT$") {
+        let handle = console.into_raw_handle();
+        // SAFETY: the handle stays open for the life of the process.
+        unsafe {
+            SetStdHandle(STD_OUTPUT_HANDLE, handle);
+            SetStdHandle(STD_ERROR_HANDLE, handle);
+        }
+    }
+}
+
+fn has_argument(name: &str) -> bool {
+    std::env::args().any(|a| a == name)
+}
+
+/// Without a console, an error that stops the app would otherwise go unnoticed.
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{e}");
+        // The autostart task retries on its own; a message box would block it.
+        if !has_argument("--background") {
+            tray::show_error(&e.to_string());
+        }
+        std::process::exit(1);
+    }
+}
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Driver DLLs are loaded by bare name; never pick one up from the app or working directory.
     // SAFETY: plain Win32 call without pointers, made before any library is loaded.
     let restricted = unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) };
@@ -72,11 +98,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Autostart mode: no console window and no output.
-    let background = std::env::args().any(|arg| arg == "--background");
-    if background {
-        // SAFETY: plain Win32 call without arguments.
-        unsafe { FreeConsole() };
+    // Autostart mode: exit if there is nothing to publish to, so that the task retries.
+    let background = has_argument("--background");
+    let console = has_argument("--console");
+    if console {
+        open_console();
     }
 
     if let Some(pid) = std::env::args().find_map(|a| a.strip_prefix("--after=")?.parse().ok()) {
@@ -101,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     "anonymous access, everyone on the network can connect"
                 };
-                if !background {
+                if console {
                     println!(
                         "MQTT broker on port {}, topic {} ({access})",
                         settings.port, settings.topic
@@ -139,14 +165,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // CPU load and power are averages over this pause.
         match events.recv_timeout(interval) {
             Ok(tray::Event::Quit) => return Ok(()),
-            Ok(tray::Event::Reload) => return Ok(start_again(background)?),
+            Ok(tray::Event::Reload) => return Ok(start_again()?),
             Err(RecvTimeoutError::Timeout) => {}
             // The tray thread is gone; keep publishing.
             Err(RecvTimeoutError::Disconnected) => thread::sleep(interval),
         }
 
         let readings = sensors.read();
-        if !background {
+        if console {
             println!();
             for r in &readings {
                 match r.value {

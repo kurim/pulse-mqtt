@@ -467,6 +467,10 @@ fn update_now(window: HWND, language: Language) {
     });
 }
 
+pub fn show_error(text: &str) {
+    message(text, MB_OK | MB_ICONERROR);
+}
+
 fn message(text: &str, style: MESSAGEBOX_STYLE) -> MESSAGEBOX_RESULT {
     // SAFETY: NUL-terminated strings that outlive the call.
     unsafe {
@@ -498,8 +502,8 @@ fn restart_elevated() -> bool {
     };
     // The new process waits for this one so that the broker port is free again.
     let mut arguments = format!("--after={}", std::process::id());
-    if std::env::args().any(|a| a == "--background") {
-        arguments.push_str(" --background");
+    for flag in std::env::args().filter(|a| a == "--background" || a == "--console") {
+        arguments = format!("{arguments} {flag}");
     }
     // SAFETY: NUL-terminated strings that outlive the call.
     let result = unsafe {

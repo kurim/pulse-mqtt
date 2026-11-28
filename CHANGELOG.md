@@ -7,6 +7,20 @@ Versions of the Rust app follow `year.month.patch`.
 
 ## [Unreleased]
 
+## [2026.11.1] - 2026-11-27
+
+### Changed
+
+- The program is smaller (about 7.6 MB instead of 11.7 MB). It uses the Windows fonts.
+- The MQTT broker keeps less message history in memory.
+- The title bar of the windows has the same colour as the window (Windows 11).
+- Release notes are taken from this changelog.
+- In the sensor window only the table scrolls.
+
+### Fixed
+
+- No console window opens at start. Use `--console` to see the sensor values.
+
 ## [2026.11.0] - 2026-11-27
 
 First release of the rewrite in Rust. It replaces the .NET app, whose last release is
@@ -42,5 +56,6 @@ First release of the rewrite in Rust. It replaces the .NET app, whose last relea
 - Fan speeds on boards without a Nuvoton NCT6799D.
 - The choice between sources for drive sensors.
 
-[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.0...HEAD
+[Unreleased]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.1...HEAD
+[2026.11.1]: https://github.com/kurim/pulse-mqtt/compare/v2026.11.0...v2026.11.1
 [2026.11.0]: https://github.com/kurim/pulse-mqtt/releases/tag/v2026.11.0
