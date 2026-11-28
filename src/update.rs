@@ -128,7 +128,7 @@ fn verify(key: &str, program: &[u8], signature: &[u8], version: &str) -> Result<
 }
 
 /// Windows allows renaming a running program, but not overwriting it.
-fn replace(exe: &Path, program: &[u8]) -> Result<(), String> {
+pub(crate) fn replace(exe: &Path, program: &[u8]) -> Result<(), String> {
     let (new, old) = (exe.with_extension("new"), exe.with_extension("old"));
     let fail = |e: std::io::Error| format!("{}: {e}", exe.display());
     // Next to the program, so that only those who may change it can touch the new file.

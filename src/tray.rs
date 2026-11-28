@@ -1,7 +1,7 @@
 //! Notification area icon with an owner-drawn menu in the Windows 11 style
 //! (light or dark, following the system setting).
 
-use crate::{config::Language, update};
+use crate::{config::Language, gui, update};
 use std::{
     cell::RefCell,
     os::windows::process::CommandExt,
@@ -64,6 +64,8 @@ pub enum Event {
     Quit,
     /// Settings changed: the app has to start again.
     Reload,
+    /// Autostart was set up: continue with the copy in Program Files.
+    Switch,
 }
 
 /// What the menu depends on.
@@ -277,11 +279,13 @@ unsafe extern "system" fn window_proc(
                 round_corners(lparam as HWND);
                 0
             }
-            // A settings window closed; wparam says whether it saved changes.
+            // A settings window closed; wparam is its exit code.
             WM_SAVED => {
                 with_state(|s| s.window_open = false);
-                if wparam != 0 {
-                    finish(window, Event::Reload);
+                match wparam as i32 {
+                    gui::SAVED => finish(window, Event::Reload),
+                    gui::INSTALLED => finish(window, Event::Switch),
+                    _ => {}
                 }
                 0
             }
@@ -397,11 +401,9 @@ fn open_window(window: HWND, page: &str) {
     with_state(|s| s.window_open = true);
     let window = window as usize;
     thread::spawn(move || {
-        let saved = child
-            .wait()
-            .is_ok_and(|status| status.code() == Some(crate::gui::SAVED));
+        let code = child.wait().ok().and_then(|status| status.code());
         // SAFETY: posting to a window handle is allowed from any thread.
-        unsafe { PostMessageW(window as HWND, WM_SAVED, saved.into(), 0) };
+        unsafe { PostMessageW(window as HWND, WM_SAVED, code.unwrap_or(0) as WPARAM, 0) };
     });
 }
 
